@@ -37,14 +37,18 @@ As specified in *Utkrishta 2026 Challenge 1*:
 ```mermaid
 flowchart TD
     subgraph Data Layer ["Data Ingestion & Partitioning (Zero Experiment Cost)"]
-        RawData["Telco Churn Raw CSV"] --> PreClean["Data Cleaner & Profiler"]
+        RawData["Telco Churn Raw CSV"] --> PreClean["Data Cleaner & Sanitizer"]
         PreClean --> Partition["Split: 80% Train-Val / 20% Sealed Holdout"]
         Partition --> Holdout["Sealed Holdout Set (Untouched until Exp 15)"]
         Partition --> TrainVal["Active Train-Val Pool (5-Fold Stratified CV)"]
+        TrainVal --> PreFlight["Pre-Flight Meta-Feature Profiler (Zero-Cost Profiling)"]
     end
 
     subgraph Agentic Supervisor ["Agentic Supervisor (Google Gemini + Math Engine)"]
-        PromptTpl["System Prompt & Context History"] --> LLMPlanner["Google Gemini 2.5 LLM Supervisor"]
+        PreFlight --> ModelSelector["Pre-Flight Classifier Selector (Locks Model Family)"]
+        ModelSelector --> LockedFamily["Locked Classifier: CatBoost for All 15 Runs"]
+        LockedFamily --> LLMPlanner["Google Gemini 2.5 LLM Supervisor"]
+        PromptTpl["System Prompt & Context History"] --> LLMPlanner
         MathEngine["Mathematical Inference Engine (Stats, Gaps, Tests)"] --> LLMPlanner
         LLMPlanner --> ConfigEmitter["Emits ExperimentConfig (JSON Schema)"]
     end
@@ -53,8 +57,11 @@ flowchart TD
         BudgetGuard{"Budget Guard Check (Count <= 15)"}
         ConfigEmitter --> BudgetGuard
         BudgetGuard -- "Count > 15" --> Abort["Hard Stop Exception (Halt Loop)"]
-        BudgetGuard -- "Count <= 15" --> FeatureEng["Dynamic Feature Engineering Pipeline"]
-        TrainVal --> FeatureEng
+        BudgetGuard -- "Count <= 15" --> DataGuard{"Data Provenance Guard (SHA-256 & Manifest)"}
+        TrainVal --> DataGuard
+        DataGuard -- "Mismatch / Foreign Data" --> ForceReset["Force Reload Canonical Dataset & Log Alert"]
+        ForceReset --> FeatureEng["Dynamic Feature Engineering Pipeline"]
+        DataGuard -- "Verified Valid" --> FeatureEng
         FeatureEng --> OptunaBridge["Optuna Guided Trial (Hyperparameter Mapping)"]
         OptunaBridge --> ModelTrainer["Classifier Training (CatBoost / LightGBM / XGBoost)"]
         ModelTrainer --> KFoldVal["5-Fold Stratified Cross-Validation"]
@@ -84,16 +91,29 @@ sequenceDiagram
     autonumber
     participant Human/CLI as Developer / Orchestrator
     participant Guard as BudgetGuard
+    participant DataGuard as DataProvenanceGuard
     participant Supervisor as Gemini Supervisor Agent
     participant Math as Math Inference Engine
     participant Trainer as Model Training Engine
     participant Ledger as Experiment Ledger (Disk)
 
     Human/CLI->>Guard: Initialize Orchestrator (Budget = 15)
+    Human/CLI->>DataGuard: Initialize Canonical Manifest (SHA-256 + Row Hash)
     Guard->>Ledger: Check previous state / run count
+
+    rect rgb(240, 248, 255)
+        note over Human/CLI, Supervisor: Pre-Flight Phase (Zero Experiment Budget Cost)
+        Human/CLI->>Supervisor: Ingest Pre-Flight Meta-Feature Profile (Categorical ratio, N/P, Sparsity)
+        Supervisor->>Supervisor: Evaluate Inductive Bias Matrix & Lock Best Classifier (CatBoost)
+        Supervisor->>Ledger: Persist Locked Classifier Selection (Immutable for Runs 1-15)
+    end
 
     loop Iterations k = 1 to 15
         Guard->>Guard: Verify k <= 15 (Increment Run Counter)
+        DataGuard->>DataGuard: Audit Ingested Data (Verify Hash & Invariants)
+        opt Dataset Tampered or Foreign
+            DataGuard->>Trainer: Force Fallback to Canonical train_val.parquet
+        end
         alt k == 1
             Supervisor->>Trainer: Emit Baseline Config (Default CatBoost + Standard Features)
         else k > 1
@@ -127,7 +147,45 @@ To ensure deterministic compliance across human developers and automated coding 
    * Hyperparameter adjustments require a new experiment.
    * Data preparation, feature generation without model fitting, and post-fit inference do not consume the budget.
 
-### 3.2 State Persistence & Crash Resilience
+### 3.2 Dataset Provenance & Cryptographic Validation Guard (Strict Data Isolation)
+In autonomous agentic pipelines, an LLM supervisor or rogue script might attempt to introduce synthetic rows, pull external tabular datasets, augment with out-of-distribution web data, or accidentally train on an unauthorized file (such as leaking the sealed test partition). This invalidates benchmark integrity and risks immediate disqualification.
+
+To ensure **absolute, verified compliance**, the system implements a concrete 4-tier **Data Provenance Guard (`src/data/validator.py`)**:
+
+#### 1. Cryptographic Fingerprint Registry (`DatasetManifest`)
+During dataset ingestion and offline partitioning (zero experiment cost), the system generates an immutable cryptographic manifest (`artifacts/dataset_manifest.json`):
+* **Source File SHA-256**: Hex digest of the original raw CSV.
+* **Partition Parquet SHA-256**: Hex digest of `data/processed/train_val.parquet`.
+* **Row-Wise Content Digest**: Deterministic content hash computed across all canonical rows:
+  $$\mathcal{H}_{\text{content}} = \text{SHA256}\left(\sum_{i=1}^N \text{hash\_row}(R_i)\right)$$
+  Implemented via `hashlib.sha256(pd.util.hash_pandas_object(df, index=True).values.tobytes()).hexdigest()`.
+
+#### 2. Set-Theoretic Index & Row Integrity Verification
+Before **any** model training cycle executes, the `DataProvenanceGuard` intercepts the input DataFrame and evaluates three mathematical invariants:
+1. **Set-Theoretic Invariant**: Every row index in the incoming training DataFrame $\mathcal{D}_{\text{in}}$ must be an exact element of the canonical training index set $\mathcal{I}_{\text{canonical}}$:
+   $$\mathcal{D}_{\text{in}}.\text{index} \equiv \mathcal{I}_{\text{canonical}} \quad \text{and} \quad \mathcal{D}_{\text{in}}.\text{index} \setminus \mathcal{I}_{\text{canonical}} = \emptyset$$
+2. **Cardinality Invariant**: The row count must strictly match the authorized train-val partition:
+   $$|\mathcal{D}_{\text{in}}| = N_{\text{canonical}}$$
+3. **Target Distribution Consistency**: The ground-truth target vector $y_{\text{in}}$ must match the canonical churn distribution exactly:
+   $$\sum_{i=1}^N y_{\text{in}, i} = \sum_{i=1}^N y_{\text{canonical}, i}$$
+
+#### 3. Air-Gapped Architectural Isolation
+* The Gemini Supervisor agent operates with **zero filesystem modification privileges** and **no data ingestion parameters**.
+* The Supervisor is restricted by schema to emitting only *feature transformation flags* and *hyperparameter numbers*. It **cannot** specify file paths, supply raw rows, or provide external URLs.
+* The model trainer receives data exclusively through the verified internal data loader (`src/data/loader.py`).
+
+#### 4. Automatic Remediation & Forced Canonical Reset
+If any foreign rows, hash mismatches, or unauthorized columns are detected:
+```python
+if not data_guard.verify_integrity(df):
+    logger.critical("SECURITY ALERT: Dataset tampering or unauthorized data source detected!")
+    # Force reset: Overwrite tainted DataFrame with canonical verified partition
+    df = data_guard.force_reload_canonical()
+    logger.info("Enforced canonical dataset restoration: Verified SHA-256 %s", data_guard.canonical_hash)
+```
+If canonical restoration fails or the disk file itself has been modified, the runner raises an immediate `UnauthorizedDatasetException` and halts the orchestrator.
+
+### 3.3 State Persistence & Crash Resilience
 * Every experiment's full configuration, random seed, execution timestamp, commit hash, telemetry data, and validation metrics are written to disk **atomically before the next cycle starts**.
 * If an experiment crashes or the API rate-limits, the system restarts from the last valid experiment index without losing previous runs or double-counting.
 
@@ -197,40 +255,81 @@ The AADS resolves this using an **LLM-Guided Optuna Hybrid**:
    * Optuna's Tree-structured Parzen Estimator (TPE) then samples the specific values within this supervisor-curated region.
    * This combines Bayesian probability modeling with LLM cognitive domain reasoning.
 3. **Warm-Starting & Prior Ingestion**:
-   * Baseline runs (Runs 1-3) seed the Optuna study with known strong defaults for tabular churn data (CatBoost default, LightGBM balanced, conservative XGBoost).
+   * Initial runs (Runs 1-3) seed the Optuna study with known strong defaults for the locked CatBoost classifier on tabular churn data (default baseline, shallow trees, conservative L2 regularization).
 
 ```
-   Iter 1-3: Broad Exploration (Baselines: CatBoost, LightGBM, XGBoost)
-   Iter 4-7: Algorithmic Family Selection + Architectural Regularization (Depth, L2, Leaf Count)
-   Iter 8-11: Feature Representation Mutations + Learning Rate Decay Fine-tuning
-   Iter 12-14: Class Imbalance Ratio (scale_pos_weight) & Bagging Temperature Tuning
-   Iter 15: Final Optimized Model / Stacking Ensemble Run
+   Pre-Flight: Zero-Cost Meta-Feature Profiling -> Supervisor Locks Classifier (CatBoost)
+   Iter 1-3: Baseline Anchor & Capacity Bounds (Depth [4 vs 6], Initial L2 Regularization)
+   Iter 4-7: Telemetry-Driven Feature Engineering (Charge Ratios, Cohorts, Pruning)
+   Iter 8-11: Bayesian Search over Learning Dynamics, Tree Iterations & Bagging Temp
+   Iter 12-14: Class Imbalance Ratio (scale_pos_weight) & Probability Calibration (Platt/Isotonic)
+   Iter 15: Final Optimized Model Artifact & Multi-Fold Decision Threshold Lock
 ```
 
 ---
 
-## 6. Model Zoo & Classifier Strategy
+## 6. Pre-Flight Dataset Profiling & Zero-Budget Classifier Selection
 
-Tabular customer churn data exhibits high categorical cardinality, non-linear relationships, and missing values. The primary classifier family is centered around modern gradient boosted decision trees (GBDTs), with CatBoost as the core workhorse.
+### 6.1 The Pre-Flight Principle (Zero Experiment Cost)
+According to official Utkrishta 2026 rules:
+> *"Data loading, cleaning, profiling, and feature design do NOT count. Maximum 15 Model-Training Experiments."*
 
-### 6.1 CatBoost Classifier (Primary Workhorse)
-* **Rationale**:
-  * Native, mathematically rigorous handling of categorical features using target encoding calculated on random permutations (prevents target leakage).
-  * Symmetric (oblivious) decision trees act as strong regularizers against overfitting on small/medium tabular datasets.
-  * Built-in support for missing numerical values and GPU/multi-core parallel training.
-* **Tuning Parameters Guided by Supervisor**:
-  * `depth`: $[3, 8]$ (shallow trees prevent overfitting on tabular churn).
-  * `l2_leaf_reg`: $[1.0, 20.0]$ (L2 regularization coefficient).
-  * `learning_rate`: $[0.01, 0.15]$ (paired with cosine or early-stopping schedules).
-  * `iterations`: $[500, 2500]$ with `early_stopping_rounds=50`.
-  * `random_strength`: $[0.1, 10.0]$ (scoring perturbation to break ties).
-  * `bagging_temperature`: $[0.0, 1.0]$ (Bayesian bootstrap sampling).
-  * `auto_class_weights`: `['None', 'Balanced', 'SqrtBalanced']`.
+To avoid wasting any of the 15 precious training runs on exploratory model-hopping (e.g., spending 5 runs testing weak baselines like Logistic Regression or Random Forests), the system introduces a **Pre-Flight Profiling & Inductive Bias Analysis Phase (Run 0)** before the training loop starts.
 
-### 6.2 Secondary Classifiers (Exploratory / Ensemble Candidates)
-* **LightGBM**: Fast histogram-based leaf-wise splitting, useful for testing deep interaction structures.
-* **XGBoost**: Exact / approximate greedy tree splitting with explicit depth-wise regularization.
-* **Voting / Stacking Ensemble**: Experiment 15 may train a soft-voting or logistic regression meta-learner combining OOF probability predictions from the top 3 best-performing models.
+The Supervisor thoroughly examines the dataset's structural meta-features, evaluates mathematical compatibility against standard classifier architectures, and **permanently fixes the single best classifier family for all 15 upcoming experiments**.
+
+```mermaid
+flowchart LR
+    Dataset["Canonical Training Partition"] --> Profiler["Meta-Feature Profiler (Zero-Fit)"]
+    Profiler --> MetaMetrics["Meta-Metrics: Categorical Ratio, N/P, Imbalance, Sparsity"]
+    MetaMetrics --> SupervisorDecision["Gemini Supervisor Inductive Bias Decision Matrix"]
+    SupervisorDecision --> Lock["Lock Classifier: CatBoost for Experiments 1 to 15"]
+    Lock --> Run1to15["15 Training Experiments: Deep Tuning of Locked Model"]
+```
+
+### 6.2 Meta-Feature Extraction Suite
+Before any model fitting occurs, `src/supervisor/profiler.py` extracts a rigorous structural meta-feature vector $\mathcal{M}$:
+1. **Categorical Dominance Ratio**:
+   $$\rho_{\text{cat}} = \frac{P_{\text{categorical}}}{P_{\text{total}}}$$
+2. **Sample-to-Dimension Ratio**:
+   $$\gamma = \frac{N_{\text{samples}}}{P_{\text{features}}}$$
+3. **Cardinality Profile**:
+   Maximum and mean unique category levels $\mathcal{C}_{\max} = \max_j |X_j|$, $\bar{\mathcal{C}} = \frac{1}{P_{\text{cat}}} \sum |X_j|$.
+4. **Information Sparsity & Missingness**:
+   Fraction of zero/blank cells $\sigma_{\text{sparse}}$, missing continuous cell ratio $\sigma_{\text{miss}}$.
+5. **Class Imbalance Skew**:
+   Minority-to-majority class ratio $\pi = \frac{N_{\text{churn}}}{N_{\text{non-churn}}}$.
+
+### 6.3 Inductive Bias Decision Matrix
+The Supervisor applies the following formal decision logic to select and lock the classifier:
+
+| Classifier Family | Structural Strengths (Inductive Bias) | Optimal Dataset Regime | Telco Churn Fit Score |
+| :--- | :--- | :--- | :--- |
+| **CatBoost** | Ordered Target Statistics on permutations; Symmetric (oblivious) trees prevent overfitting on small/medium tabular data. Native handling of categorical features and string missing values. | $\rho_{\text{cat}} \ge 0.40$, $N \le 50,000$, tabular with mixed datatypes | **98% (Selected & Locked)** |
+| **LightGBM** | Histogram binning with leaf-wise splitting; optimal for massive datasets where throughput dominates. | $\rho_{\text{cat}} < 0.30$, $N > 100,000$, dense numerical features | 65% |
+| **XGBoost** | Pre-sorted exact greedy splitting; depth-wise tree expansion with Hessian-based regularization. | Numerical-heavy tabular with one-hot encoded low cardinality | 68% |
+| **Random Forest** | Bagging of unpruned CART trees; vulnerable to high-cardinality categorical cardinality explosion. | Medium numeric datasets, low noise tolerance | 45% |
+| **Logistic Regression** | Linear hyperplane decision boundary; fails to capture high-order contractual interactions without manual polynomials. | High-dimensional sparse text / linearly separable spaces | 30% |
+
+### 6.4 Telco Churn Resolution & Classifier Lock
+On the Telco Customer Churn dataset, the Pre-Flight Profiler determines:
+* $\rho_{\text{cat}} = 16 / 20 = 80\%$ (overwhelmingly categorical).
+* $N \approx 5,634$ training samples (small-to-medium tabular regime where standard GBDTs are prone to overfitting).
+* String-represented blanks in `TotalCharges` requiring seamless handling.
+* Class imbalance $\pi \approx 0.26 / 0.74 \approx 0.35$.
+
+**The Supervisor issues an immutable `ClassifierLockDecision` choosing `CatBoostClassifier`.**  
+All 15 subsequent experiments are strictly dedicated to iteratively refining this chosen classifier (feature mutations, tree depth, $L_2$ leaf regularization, learning rate decay, Optuna Bayesian sampling, probability calibration, and threshold optimization).
+
+### 6.5 CatBoost Classifier Hyperparameter Search Parameters
+Once CatBoost is locked, the Supervisor and Optuna focus their search on its core parameters:
+* `depth`: $[3, 8]$ (shallow trees prevent overfitting on tabular churn).
+* `l2_leaf_reg`: $[1.0, 20.0]$ (L2 regularization coefficient).
+* `learning_rate`: $[0.01, 0.15]$ (paired with cosine or early-stopping schedules).
+* `iterations`: $[500, 2500]$ with `early_stopping_rounds=50`.
+* `random_strength`: $[0.1, 10.0]$ (scoring perturbation to break ties).
+* `bagging_temperature`: $[0.0, 1.0]$ (Bayesian bootstrap sampling).
+* `auto_class_weights`: `['None', 'Balanced', 'SqrtBalanced']`.
 
 ---
 
@@ -335,7 +434,8 @@ IOTAxEnigmaHackathon/
 │   │   ├── __init__.py
 │   │   ├── loader.py            # Dataset loading and verification
 │   │   ├── cleaner.py           # Missing value sanitization & formatting
-│   │   └── splitter.py          # Stratified train-val and holdout partitioning
+│   │   ├── splitter.py          # Stratified train-val and holdout partitioning
+│   │   └── validator.py         # Cryptographic SHA-256 & row manifest provenance guard
 │   ├── features/
 │   │   ├── __init__.py
 │   │   ├── pipeline.py          # Dynamic feature transformation pipeline
@@ -348,6 +448,7 @@ IOTAxEnigmaHackathon/
 │   │   └── ensemble.py          # Post-run stacking/blending module
 │   ├── supervisor/
 │   │   ├── __init__.py
+│   │   ├── profiler.py          # Pre-flight meta-feature extractor & classifier selector
 │   │   ├── llm_client.py        # Google AI Studio Gemini API wrapper
 │   │   ├── math_engine.py       # Computes Overfitting Index, DeLong, SHAP stats
 │   │   ├── prompt_builder.py    # Formulates structured prompts with math context
@@ -374,6 +475,7 @@ IOTAxEnigmaHackathon/
 │   └── export_submission.py     # Generates submission CSV for organizer portal
 └── tests/
     ├── test_budget_guard.py     # Verifies that fit() raises error on run 16
+    ├── test_data_validation.py  # Tests SHA-256 integrity check and forced canonical reset
     ├── test_data_pipeline.py    # Tests leakage-free transformations
     ├── test_math_engine.py      # Tests DeLong, ECE, and Overfitting calculations
     └── test_supervisor_schema.py# Verifies Gemini structured output parsing
@@ -410,7 +512,57 @@ To enable seamless parallel development across human engineers and AI coding age
       """Returns (train_val_df, sealed_holdout_df)."""
   ```
 
-### 10.3 `src/supervisor/math_engine.py`
+### 10.3 `src/data/validator.py`
+* **Purpose**: Enforce dataset provenance, detect external data injection, and force canonical reset.
+* **Interface**:
+  ```python
+  @dataclass
+  class DatasetManifest:
+      raw_file_sha256: str
+      canonical_train_sha256: str
+      content_row_hash: str
+      total_rows: int
+      allowed_indices: List[int]
+      allowed_columns: List[str]
+
+  class DataProvenanceGuard:
+      def __init__(self, manifest_path: Path, canonical_data_path: Path): ...
+      def verify_integrity(self, df: pd.DataFrame) -> bool:
+          """Validates SHA-256, set-theoretic index containment, and cardinality."""
+      def force_reload_canonical(self) -> pd.DataFrame:
+          """Reloads and returns the verified canonical DataFrame if tampering occurs."""
+      def assert_strictly_canonical(self, df: pd.DataFrame) -> pd.DataFrame:
+          """Verifies df; if foreign rows or columns exist, replaces with canonical data."""
+  ```
+
+### 10.4 `src/supervisor/profiler.py`
+* **Purpose**: Extract dataset structural meta-features and execute pre-flight classifier selection (Run 0, zero experiment cost).
+* **Interface**:
+  ```python
+  @dataclass
+  class DatasetMetaFeatures:
+      num_samples: int
+      num_features: int
+      categorical_ratio: float
+      class_imbalance_ratio: float
+      max_cardinality: int
+      missing_cell_ratio: float
+      sparsity_ratio: float
+
+  @dataclass
+  class ClassifierLockDecision:
+      selected_family: str  # "catboost"
+      rationale: str
+      inductive_bias_fit_score: float
+      is_locked: bool = True
+
+  class PreFlightProfiler:
+      def extract_meta_features(self, df: pd.DataFrame, target_col: str = "Churn") -> DatasetMetaFeatures: ...
+      def select_and_lock_classifier(self, meta: DatasetMetaFeatures) -> ClassifierLockDecision:
+          """Determines optimal classifier via inductive bias matching and locks it for Runs 1-15."""
+  ```
+
+### 10.5 `src/supervisor/math_engine.py`
 * **Purpose**: Compute mathematical diagnostics from completed experiment telemetry.
 * **Interface**:
   ```python
@@ -434,7 +586,7 @@ To enable seamless parallel development across human engineers and AI coding age
       ) -> MathDiagnosis: ...
   ```
 
-### 10.4 `src/models/catboost_model.py`
+### 10.6 `src/models/catboost_model.py`
 * **Purpose**: Train CatBoostClassifier with 5-Fold Stratified CV, capturing detailed telemetry per fold.
 * **Interface**:
   ```python
@@ -449,7 +601,7 @@ To enable seamless parallel development across human engineers and AI coding age
           """Runs 5-fold CV, returns OOF predictions, fold ROC/PR curves, and loss histories."""
   ```
 
-### 10.5 `src/orchestrator/loop.py`
+### 10.7 `src/orchestrator/loop.py`
 * **Purpose**: Coordinate the 15-iteration cycle.
 * **Execution Flow**:
   1. Verify budget with `BudgetGuard`.
@@ -464,33 +616,34 @@ To enable seamless parallel development across human engineers and AI coding age
 
 ## 11. Chronological 15-Run Strategy Roadmap
 
-The 15 experiments follow a structured, hypothesis-driven progression:
+With the classifier locked during Pre-Flight (e.g. CatBoost), all 15 experiments follow a structured, hypothesis-driven iterative optimization trajectory:
 
 ```
-[Phase 1: Exploration & Baselines (Runs 1-3)]
-├── Run 1: Default CatBoost baseline with raw features (Benchmark anchor)
-├── Run 2: Default LightGBM baseline (Tree architecture comparison)
-└── Run 3: Default XGBoost baseline (Identify best suited algorithmic family)
+[Pre-Flight Phase: Zero Experiment Cost (Run 0)]
+└── Run 0: Meta-Feature Profiler + Inductive Bias Matching -> Supervisor Locks CatBoost
 
-[Phase 2: Algorithmic Specialization & Structural Capacity (Runs 4-7)]
-├── Run 4: Best algorithm from Phase 1 + Feature Set A (Charge & service ratios)
-├── Run 5: Regularization sweep on Best Algo (Tune depth [4 vs 6] & l2_leaf_reg)
-├── Run 6: Learning rate decay & early stopping fine-tuning (500 to 2000 trees)
-└── Run 7: Bagging temperature / Subsample ratio tuning (Combat generalization gap)
+[Phase 1: Baseline Benchmark & Structural Capacity (Runs 1-3)]
+├── Run 1: Default CatBoost baseline with raw features (Benchmark anchor & initial loss curves)
+├── Run 2: Tree capacity tuning (Evaluate shallow depth=4 vs depth=6 to check generalization gap)
+└── Run 3: Regularization boundary sweep (Tune l2_leaf_reg in [3.0, 15.0] to suppress overfitting)
 
-[Phase 3: Domain Feature Optimization & Leakage Auditing (Runs 8-11)]
-├── Run 8: Feature Set B (Contractual tenure cohorts + payment risk interactions)
-├── Run 9: Feature pruning (Drop bottom 20% features identified by SHAP & Mutual Info)
-├── Run 10: Class weight optimization (Evaluate Balanced vs SqrtBalanced for PR-AUC boost)
-└── Run 11: Categorical encoding strategy (CatBoost target encoding vs One-Hot on contracts)
+[Phase 2: Telemetry-Driven Feature Engineering & Pruning (Runs 4-7)]
+├── Run 4: Feature Set A (Monthly-to-Total charge velocity & tenure cohorts)
+├── Run 5: Feature Set B (Service adoption density & contractual friction indicators)
+├── Run 6: Categorical interaction terms (High-order pairs: Contract x PaymentMethod)
+└── Run 7: Mathematical feature pruning (Drop bottom 20% features identified by SHAP vs Mutual Info)
 
-[Phase 4: Hyper-Refinement & Convergence (Runs 12-14)]
-├── Run 12: Narrow Optuna TPE search in localized hyperparameter basin around best config
-├── Run 13: Probability calibration (Isotonic regression vs Platt scaling post-fit)
-└── Run 14: Threshold-optimized decision model (Youden's J maximization for F1/PR-AUC)
+[Phase 3: Hyperparameter Optimization under Optuna TPE (Runs 8-11)]
+├── Run 8: Learning rate decay & tree count dynamics (lr=0.03 with 2000 trees & early stopping)
+├── Run 9: Bayesian bootstrap & bagging temperature tuning (bagging_temperature in [0.2, 0.8])
+├── Run 10: Imbalance compensation (Compare Balanced vs SqrtBalanced class weights for PR-AUC)
+└── Run 11: Random strength perturbation (Optimize random_strength to break noisy leaf ties)
 
-[Phase 5: Final Model Selection & Ensembling (Run 15)]
-└── Run 15: Out-Of-Fold Stacking / Weighted Soft-Voting Ensemble of top 3 distinct runs
+[Phase 4: Calibration, Thresholding & Final Convergence (Runs 12-15)]
+├── Run 12: Narrow Optuna TPE search in localized hyperparameter basin around best historical config
+├── Run 13: Out-Of-Fold probability calibration (Evaluate Platt scaling vs Isotonic regression)
+├── Run 14: Decision threshold optimization (Youden's J statistic / F-beta maximization)
+└── Run 15: Final multi-seed cross-validated CatBoost champion artifact & submission generation
 ```
 
 ---
