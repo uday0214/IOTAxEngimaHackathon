@@ -33,10 +33,12 @@ def main():
 
     if not raw_file.exists():
         logger.warning("Raw dataset not found at %s.", raw_file)
-        logger.info("Generating canonical sample Telco dataset (1,000 samples) for end-to-end cloud pipeline...")
-        raw_df = generate_sample_tabular_data(n_samples=1000)
-        raw_df.to_csv(raw_file, index=False)
-        logger.info("Saved sample dataset to %s", raw_file)
+        logger.info("Downloading official Telco Customer Churn dataset (blastchar / IBM)...")
+        import urllib.request
+        url = "https://raw.githubusercontent.com/IBM/telco-customer-churn-on-icp4d/master/data/Telco-Customer-Churn.csv"
+        urllib.request.urlretrieve(url, raw_file)
+        logger.info("Successfully downloaded dataset to %s", raw_file)
+        raw_df = pd.read_csv(raw_file)
     else:
         logger.info("Loading raw dataset from %s...", raw_file)
         raw_df = pd.read_csv(raw_file)
