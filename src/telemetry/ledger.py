@@ -31,3 +31,8 @@ class ExperimentLedger:
         if not runs:
             return None
         return max(runs, key=lambda r: r.get("metrics", {}).get("oof_roc_auc", 0.0))
+
+    # Backward compatibility aliases
+    append_record = append_run
+    load_history = load_all_runs
+
