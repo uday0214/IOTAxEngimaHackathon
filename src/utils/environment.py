@@ -74,6 +74,12 @@ def get_colab_secret(secret_name: str) -> Optional[str]:
 
 def get_gemini_api_key() -> Optional[str]:
     """Resolves the Gemini API key from environment variables or Google Colab Secrets."""
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+
     # 1. Environment variable (e.g. .env or exported env var)
     key = os.getenv("GEMINI_API_KEY")
     if key and key.strip() and key != "your_gemini_api_key_here":
