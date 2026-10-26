@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import numpy as np
 import pandas as pd
 
@@ -16,6 +16,7 @@ from src.supervisor.prompt_builder import SupervisorPromptBuilder
 from src.supervisor.schemas import SupervisorDecision, HyperparameterConfig, FeatureEngineeringConfig
 from src.features.pipeline import DynamicFeaturePipeline
 from src.optuna_tpe.sampler_bridge import OptunaSamplerBridge
+from src.telemetry.collector import ExtensiveTelemetryCollector
 from src.telemetry.ledger import ExperimentLedger
 from src.models.base import ExperimentTelemetry
 from src.utils.environment import get_device
@@ -32,6 +33,7 @@ class AutonomousExperimentLoop:
         ledger_path: Path = Path("artifacts/experiment_ledger.jsonl"),
         manifest_path: Path = Path("artifacts/dataset_manifest.json"),
         canonical_path: Path = Path("data/processed/train_val.parquet"),
+        telemetry_dir: Path = Path("artifacts/telemetry"),
         execute_live_training: bool = False,
         device: str = "auto",
     ):
@@ -41,12 +43,15 @@ class AutonomousExperimentLoop:
             ledger_path: Path to append-only JSONL ledger.
             manifest_path: Path to dataset cryptographic manifest.
             canonical_path: Path to verified train_val dataset partition.
+            telemetry_dir: Directory where detailed per-experiment telemetry JSONs are saved.
             execute_live_training: If True, invokes actual CatBoost training;
                                   If False, runs simulated telemetry (enables testing
                                   the full loop without loading model weights yet).
             device: Target hardware device ('auto', 'cpu', 'gpu').
         """
         self.max_runs = max_runs
+        self.telemetry_dir = Path(telemetry_dir)
+        self.telemetry_dir.mkdir(parents=True, exist_ok=True)
         self.execute_live_training = execute_live_training
         self.device = get_device(device)
 
@@ -119,7 +124,50 @@ class AutonomousExperimentLoop:
         # 6. Inform Optuna study of result
         self.optuna_bridge.record_result(experiment_id - 1, telemetry.oof_roc_auc)
 
-        # 7. Record Experiment Ledger Entry
+        # 7. Convert telemetry to comprehensive diagnostic dictionary
+        telemetry_dict = {
+            "experiment_id": experiment_id,
+            "oof_roc_auc": telemetry.oof_roc_auc,
+            "oof_pr_auc": telemetry.oof_pr_auc,
+            "oof_log_loss": telemetry.oof_log_loss,
+            "oof_brier_score": telemetry.oof_brier_score,
+            "fold_roc_aucs": telemetry.fold_roc_aucs,
+            "fold_metrics": telemetry.fold_metrics,
+            "fold_std_roc_auc": telemetry.fold_std_roc_auc,
+            "final_train_loss": telemetry.final_train_loss,
+            "final_val_loss": telemetry.final_val_loss,
+            "generalization_gap": telemetry.generalization_gap,
+            "overfitting_index": telemetry.overfitting_index,
+            "best_iteration": telemetry.best_iteration,
+            "total_iterations": telemetry.total_iterations,
+            "early_stopping_fraction": telemetry.early_stopping_fraction,
+            "val_loss_gradient_tail": telemetry.val_loss_gradient_tail,
+            "loss_trajectory_samples": telemetry.loss_trajectory_samples,
+            "feature_importances": telemetry.feature_importances,
+            "top_features": telemetry.top_features,
+            "bottom_features": telemetry.bottom_features,
+            "zero_importance_features": telemetry.zero_importance_features,
+            "ece_score": telemetry.ece_score,
+            "optimal_youden_threshold": telemetry.optimal_youden_threshold,
+            "f1_macro_05": telemetry.f1_macro_05,
+            "f1_at_optimal": telemetry.f1_at_optimal,
+            "matthews_corrcoef": telemetry.matthews_corrcoef,
+            "confusion_matrix_05": telemetry.confusion_matrix_05,
+            "confusion_matrix_optimal": telemetry.confusion_matrix_optimal,
+            "false_negative_rate": telemetry.false_negative_rate,
+            "false_positive_rate": telemetry.false_positive_rate,
+            "training_duration_seconds": telemetry.training_duration_seconds,
+            "device_used": telemetry.device_used,
+        }
+
+        # 8. Persist detailed JSON telemetry artifact
+        ExtensiveTelemetryCollector.save_detailed_telemetry(
+            experiment_id=experiment_id,
+            telemetry_dict=telemetry_dict,
+            output_dir=self.telemetry_dir,
+        )
+
+        # 9. Record Experiment Ledger Entry
         entry = {
             "experiment_id": experiment_id,
             "hypothesis": decision.hypothesis,
@@ -127,21 +175,18 @@ class AutonomousExperimentLoop:
             "hyperparameters": decision.hyperparameters.model_dump(),
             "sampled_params": sampled_params,
             "feature_config": decision.feature_config.model_dump(),
-            "metrics": {
-                "oof_roc_auc": telemetry.oof_roc_auc,
-                "oof_pr_auc": telemetry.oof_pr_auc,
-                "oof_log_loss": telemetry.oof_log_loss,
-                "oof_brier_score": telemetry.oof_brier_score,
-                "final_train_loss": telemetry.final_train_loss,
-                "final_val_loss": telemetry.final_val_loss,
-                "fold_roc_aucs": telemetry.fold_roc_aucs,
-            },
+            "metrics": telemetry_dict,
             "expected_outcome": decision.expected_outcome,
         }
         self.ledger.append_run(entry)
         logger.info(
-            "--> Run %d/15 Recorded: ROC-AUC=%.5f | PR-AUC=%.5f | LogLoss=%.4f",
-            experiment_id, telemetry.oof_roc_auc, telemetry.oof_pr_auc, telemetry.oof_log_loss
+            "--> Run %d/15 Completed: ROC-AUC=%.5f | PR-AUC=%.5f | LogLoss=%.4f | Gap=%.4f (Omega=%.2f%%)",
+            experiment_id,
+            telemetry.oof_roc_auc,
+            telemetry.oof_pr_auc,
+            telemetry.oof_log_loss,
+            telemetry.generalization_gap,
+            telemetry.overfitting_index,
         )
         return entry
 
@@ -190,12 +235,12 @@ class AutonomousExperimentLoop:
             run_result = self.run_single_experiment(exp_id, current_decision, train_val_df)
             completed_entries.append(run_result)
 
-            # If more experiments remain, compute mathematical feedback and invoke Gemini Supervisor
+            # If more experiments remain, pipe telemetry to Math Engine & Gemini Supervisor for next cycle
             if exp_id < self.max_runs:
                 best_run = self.ledger.get_best_run()
                 best_auc = best_run["metrics"]["oof_roc_auc"] if best_run else run_result["metrics"]["oof_roc_auc"]
 
-                # 1. Mathematical Diagnostics
+                # 1. Mathematical Diagnostics on Extensive Telemetry
                 diagnosis = self.math_engine.analyze(
                     current_telemetry=run_result["metrics"],
                     best_telemetry=best_run["metrics"] if best_run else None,
@@ -206,7 +251,7 @@ class AutonomousExperimentLoop:
                     exp_id, diagnosis.overfitting_index, diagnosis.recommended_action
                 )
 
-                # 2. Build Structured Context Prompt
+                # 2. Build Structured Context Prompt with Extensive Process Data
                 prompt = self.prompt_builder.build_prompt(
                     experiment_id=exp_id + 1,
                     history=self.ledger.load_all_runs(),
@@ -215,7 +260,7 @@ class AutonomousExperimentLoop:
                     best_auc=best_auc,
                 )
 
-                # 3. Gemini Supervisor Query
+                # 3. Gemini Supervisor Query (Tuning Hyperparameters for next experiment)
                 logger.info("Consulting Gemini Supervisor for Experiment %d config...", exp_id + 1)
                 current_decision = self.llm_client.decide_next_experiment(prompt, experiment_id=exp_id + 1)
 
@@ -256,19 +301,48 @@ class AutonomousExperimentLoop:
         }
 
     def _simulate_telemetry(self, exp_id: int, decision: SupervisorDecision) -> ExperimentTelemetry:
-        """Simulates realistic telemetry progression for loop testing before live model loading."""
-        # Realistic progression: baseline starts ~0.842, climbs to ~0.868 as hyperparameters and features refine
+        """Simulates realistic extensive telemetry for loop testing before live model loading."""
         base_auc = 0.8420
         auc_progression = [
             0.8420, 0.8455, 0.8480, 0.8525, 0.8560, 0.8590, 0.8610,
             0.8625, 0.8640, 0.8652, 0.8660, 0.8668, 0.8675, 0.8680, 0.8685
         ]
         auc = auc_progression[exp_id - 1] if exp_id <= len(auc_progression) else base_auc + (exp_id * 0.0018)
-        pr_auc = auc * 0.78  # Typical ratio for Telco Churn
+        pr_auc = auc * 0.78
 
-        # Losses
+        # Loss dynamics
         train_loss = 0.35 - (exp_id * 0.006)
         val_loss = 0.39 - (exp_id * 0.004)
+        gen_gap = val_loss - train_loss
+        overfit_idx = (gen_gap / val_loss) * 100.0
+
+        # Iterations
+        total_iter = decision.hyperparameters.iterations
+        best_iter = int(total_iter * (0.65 + (exp_id * 0.02)))
+        best_iter = min(best_iter, total_iter - 10)
+
+        # Loss trajectories
+        sampled_losses = [
+            {"iteration": int(total_iter * frac), "train_loss": round(0.55 - (frac * 0.20), 4), "val_loss": round(0.52 - (frac * 0.13), 4)}
+            for frac in [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+        ]
+
+        # Fold metrics
+        fold_aucs = [auc - 0.003, auc + 0.002, auc - 0.001, auc + 0.003, auc - 0.001]
+        fold_metrics = [{"fold": i + 1, "roc_auc": round(a, 5), "pr_auc": round(a * 0.78, 5), "log_loss": round(val_loss, 4)} for i, a in enumerate(fold_aucs)]
+
+        # Features
+        top_feats = [
+            {"feature": "Contract", "importance": 32.5},
+            {"feature": "tenure", "importance": 24.1},
+            {"feature": "MonthlyCharges", "importance": 18.3},
+            {"feature": "TotalCharges", "importance": 12.0},
+        ]
+        bottom_feats = [
+            {"feature": "PhoneService", "importance": 0.4},
+            {"feature": "gender", "importance": 0.2},
+            {"feature": "MultipleLines", "importance": 0.1},
+        ]
 
         return ExperimentTelemetry(
             experiment_id=exp_id,
@@ -276,7 +350,31 @@ class AutonomousExperimentLoop:
             oof_pr_auc=float(pr_auc),
             oof_log_loss=float(val_loss),
             oof_brier_score=0.125 - (exp_id * 0.001),
-            fold_roc_aucs=[auc - 0.004, auc + 0.003, auc - 0.001, auc + 0.002, auc],
+            fold_roc_aucs=fold_aucs,
+            fold_metrics=fold_metrics,
+            fold_std_roc_auc=float(np.std(fold_aucs)),
             final_train_loss=float(train_loss),
             final_val_loss=float(val_loss),
+            generalization_gap=float(gen_gap),
+            overfitting_index=float(overfit_idx),
+            best_iteration=best_iter,
+            total_iterations=total_iter,
+            early_stopping_fraction=best_iter / total_iter,
+            val_loss_gradient_tail=-0.00015 + (exp_id * 0.00002),
+            loss_trajectory_samples=sampled_losses,
+            feature_importances={f["feature"]: f["importance"] for f in top_feats + bottom_feats},
+            top_features=top_feats,
+            bottom_features=bottom_feats,
+            zero_importance_features=["MultipleLines"] if exp_id > 5 else [],
+            ece_score=0.042 - (exp_id * 0.001),
+            optimal_youden_threshold=0.38,
+            f1_macro_05=0.62 + (exp_id * 0.005),
+            f1_at_optimal=0.67 + (exp_id * 0.005),
+            matthews_corrcoef=0.48 + (exp_id * 0.008),
+            confusion_matrix_05=[[380, 40], [45, 135]],
+            confusion_matrix_optimal=[[360, 60], [25, 155]],
+            false_negative_rate=0.25 - (exp_id * 0.008),
+            false_positive_rate=0.09 - (exp_id * 0.002),
+            training_duration_seconds=1.2,
+            device_used="CPU",
         )

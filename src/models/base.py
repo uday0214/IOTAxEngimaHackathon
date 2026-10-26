@@ -1,27 +1,59 @@
-"""Base classifier interface and telemetry return types."""
+"""Base classifier interface and comprehensive telemetry data models."""
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
-import numpy as np
+from typing import Dict, List, Optional, Any
 import pandas as pd
 
 
 @dataclass
 class ExperimentTelemetry:
+    """Extensive telemetry collected during and after each fit-and-validation experiment."""
+
     experiment_id: int
     oof_roc_auc: float
     oof_pr_auc: float
     oof_log_loss: float
     oof_brier_score: float
+
+    # Fold-level granularity
     fold_roc_aucs: List[float] = field(default_factory=list)
+    fold_metrics: List[Dict[str, float]] = field(default_factory=list)
+    fold_std_roc_auc: float = 0.0
+
+    # Learning curve dynamics & iterations
     final_train_loss: float = 0.0
     final_val_loss: float = 0.0
-    iteration_train_losses: List[float] = field(default_factory=list)
-    iteration_val_losses: List[float] = field(default_factory=list)
+    generalization_gap: float = 0.0
+    overfitting_index: float = 0.0
+    best_iteration: int = 0
+    total_iterations: int = 1000
+    early_stopping_fraction: float = 1.0
+    val_loss_gradient_tail: float = 0.0
+    loss_trajectory_samples: List[Dict[str, Any]] = field(default_factory=list)
+
+    # Feature importance spectrum
     feature_importances: Dict[str, float] = field(default_factory=dict)
-    confusion_matrix: List[List[int]] = field(default_factory=list)
-    youden_threshold: float = 0.5
+    top_features: List[Dict[str, Any]] = field(default_factory=list)
+    bottom_features: List[Dict[str, Any]] = field(default_factory=list)
+    zero_importance_features: List[str] = field(default_factory=list)
+
+    # Probability calibration & decision thresholding
+    ece_score: float = 0.0
+    optimal_youden_threshold: float = 0.5
+    f1_macro_05: float = 0.0
+    f1_at_optimal: float = 0.0
+    matthews_corrcoef: float = 0.0
+
+    # Error analysis & confusion matrices
+    confusion_matrix_05: List[List[int]] = field(default_factory=list)
+    confusion_matrix_optimal: List[List[int]] = field(default_factory=list)
+    false_negative_rate: float = 0.0
+    false_positive_rate: float = 0.0
+
+    # Hardware & performance profiling
+    training_duration_seconds: float = 0.0
+    device_used: str = "CPU"
 
 
 class BaseModel(ABC):
@@ -35,5 +67,5 @@ class BaseModel(ABC):
         n_splits: int = 5,
         random_state: int = 42,
     ) -> ExperimentTelemetry:
-        """Executes n-fold stratified cross-validation and records telemetry."""
+        """Executes n-fold stratified cross-validation and records extensive telemetry."""
         pass
