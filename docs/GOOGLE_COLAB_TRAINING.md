@@ -8,7 +8,7 @@ This guide details how to execute the **Autonomous AI Data Scientist (AADS)** fr
 
 Click the badge below to open the official interactive training notebook directly in Google Colab:
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/udayl/IOTAxEnigmaHackathon/blob/uday/notebooks/colab_training.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/uday0214/IOTAxEngimaHackathon/blob/main/notebooks/colab_training.ipynb)
 
 ---
 
@@ -61,8 +61,8 @@ api_key = get_gemini_api_key()
 
 ### Step 1: Clone Repository & Install Dependencies
 ```bash
-!git clone https://github.com/udayl/IOTAxEnigmaHackathon.git
-%cd IOTAxEnigmaHackathon
+!git clone https://github.com/uday0214/IOTAxEngimaHackathon.git
+%cd IOTAxEngimaHackathon
 !pip install -q -r requirements.txt
 ```
 
