@@ -53,11 +53,13 @@ catboost_info/
 *.db
 *.db-journal
 
-# Large model binaries / data files
-data/raw/*.csv
-data/processed/*.parquet
+# Large model binaries
 artifacts/models/*.cbm
 artifacts/models/*.pkl
+
+# Canonical competition dataset is tracked for Colab convenience
+!data/raw/Telco-Customer-Churn.csv
+!data/processed/*.parquet
 
 # Keep gitkeep files
 !.gitkeep
