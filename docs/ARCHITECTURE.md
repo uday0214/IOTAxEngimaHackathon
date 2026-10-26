@@ -27,7 +27,43 @@ flowchart LR
 4. **Dual-Brain Supervisor**: Combines Google Gemini LLM cognitive reasoning with a deterministic **Mathematical Inference Engine** (Overfitting Index, DeLong ROC-AUC significance test, SHAP vs Mutual Information rank correlation, ECE calibration).
 5. **Air-Gapped Supervisor Isolation**: The LLM Supervisor has zero access to data ingestion paths and cannot pass raw rows or external data sources; it emits strictly validated configuration flags and hyperparameter schemas.
 6. **Optuna Guided TPE Bridge**: Reconciles Bayesian hyperparameter search with the 15-fit limit by using Optuna as a single-trial surrogate directed by the Supervisor's dynamic search spaces for the locked classifier.
-7. **CatBoost Core**: Exploits native categorical target encoding and symmetric tree regularization for tabular churn prediction.
+7. **CatBoost Core & Hardware Acceleration**: Exploits native categorical target encoding and symmetric tree regularization for tabular churn prediction, with automatic GPU/CPU device dispatch.
 8. **Sealed 20% Holdout Split**: Prevents test set leakage; holdout set is evaluated only after Experiment 15 concludes.
+9. **Google Colab Cloud Execution Layer**: Native support for execution inside Google Colab environments with one-click Jupyter notebooks, Colab Secrets integration, GPU acceleration, and Google Drive artifact persistence.
+
+---
+
+## Google Colab & Cloud Acceleration Architecture
+
+```mermaid
+flowchart TD
+    subgraph Google Colab Runtime
+        N["notebooks/colab_training.ipynb"]
+        S["Colab Secrets (GEMINI_API_KEY)"] --> G["GeminiSupervisorClient"]
+        ENV["src/utils/environment.py"] -->|Detects CUDA| HW["GPU Acceleration: task_type='GPU'"]
+        ENV -->|Fallback| CPU["CPU Acceleration: Multi-threaded"]
+        G --> LOOP["AutonomousExperimentLoop"]
+        HW --> CB["CatBoostPipelineModel"]
+        CPU --> CB
+        CB --> LOOP
+        LOOP --> LEDGER["artifacts/experiment_ledger.jsonl"]
+        LOOP --> MODEL["artifacts/champion_model.cbm"]
+        LOOP --> SUB["artifacts/submission.csv"]
+    end
+    subgraph Persistent Storage
+        DRIVE["Google Drive (/content/drive/MyDrive/AADS_Telco_Artifacts)"]
+    end
+    LEDGER --> DRIVE
+    MODEL --> DRIVE
+    SUB --> DRIVE
+```
+
+### Cloud Execution Subsystems
+- **Device Abstraction (`src/utils/environment.py`)**: Interrogates CUDA runtime and nvidia-smi. Resolves `--device auto` to GPU if an NVIDIA GPU (e.g. Tesla T4, A100) is present; otherwise falls back gracefully to CPU.
+- **Resilient CatBoost Device Dispatcher**: Wraps CatBoost fold fits so that if GPU memory or CUDA driver errors occur, execution seamlessly falls back to CPU without breaking the 15-run experiment loop.
+- **Air-Gapped Colab Secrets Integration**: Reads `userdata.get("GEMINI_API_KEY")` directly from Colab's native secure store. No `.env` files or hardcoded credentials required in cloud notebooks.
+- **Automated Google Drive Syncing**: Optionally symlinks or mirrors the `artifacts/` folder to persistent Google Drive storage, ensuring all 15 experiment logs, the champion model weights, and the final submission CSV survive session termination.
+
+See [GOOGLE_COLAB_TRAINING.md](GOOGLE_COLAB_TRAINING.md) for full setup instructions and [`notebooks/colab_training.ipynb`](../notebooks/colab_training.ipynb) for the turnkey notebook.
 
 See [TECHNICAL.md](../TECHNICAL.md) for data schemas, mathematical derivations, module responsibilities, and agentic collaboration guidelines.

@@ -1,6 +1,6 @@
 # Core Numerical & Tabular Data Science
-numpy>=1.24.0,<2.0.0
-pandas>=2.0.0,<3.0.0
+numpy>=2.0.0
+pandas>=2.0.0
 scipy>=1.10.0
 pyarrow>=14.0.0
 
