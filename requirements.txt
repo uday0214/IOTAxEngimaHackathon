@@ -18,7 +18,6 @@ shap>=0.43.0
 
 # Google GenAI / Gemini API
 google-genai>=0.1.1
-google-generativeai>=0.8.0
 
 # Schema Validation & Serialization
 pydantic>=2.5.0

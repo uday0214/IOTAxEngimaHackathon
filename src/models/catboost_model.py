@@ -26,11 +26,22 @@ class CatBoostPipelineModel(BaseModel):
         config: HyperparameterConfig,
         experiment_id: int = 1,
         device: str = "auto",
+        cat_features: Optional[List[str]] = None,
     ):
         self.config = config
         self.experiment_id = experiment_id
         self.device = get_device(device)
+        self.cat_features = cat_features
         self.champion_model: Optional[CatBoostClassifier] = None
+
+    def _detect_categorical_cols(self, X: pd.DataFrame) -> List[str]:
+        if self.cat_features is not None:
+            return [col for col in self.cat_features if col in X.columns]
+        return [
+            col for col in X.columns
+            if X[col].dtype.name in ("object", "category", "string")
+            or isinstance(X[col].dtype, (pd.CategoricalDtype, pd.StringDtype))
+        ]
 
     def _build_classifier(self, random_seed: int, categorical_cols: List[str], task_type: str) -> CatBoostClassifier:
         auto_class_weights = self.config.class_weight_mode if self.config.class_weight_mode != "None" else None
@@ -61,7 +72,7 @@ class CatBoostPipelineModel(BaseModel):
         random_state: int = 42,
     ) -> ExperimentTelemetry:
         start_time = time.perf_counter()
-        categorical_cols = X.select_dtypes(include=["object", "category"]).columns.tolist()
+        categorical_cols = self._detect_categorical_cols(X)
         skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
 
         oof_probs = np.zeros(len(X))
@@ -78,8 +89,11 @@ class CatBoostPipelineModel(BaseModel):
         current_task_type = self.device
 
         for fold, (train_idx, val_idx) in enumerate(skf.split(X, y)):
-            X_tr, y_tr = X.iloc[train_idx], y.iloc[train_idx]
-            X_va, y_val = X.iloc[val_idx], y.iloc[val_idx]
+            X_tr, y_tr = X.iloc[train_idx].copy(), y.iloc[train_idx]
+            X_va, y_val = X.iloc[val_idx].copy(), y.iloc[val_idx]
+            for col in categorical_cols:
+                X_tr[col] = X_tr[col].fillna("Missing").astype(str)
+                X_va[col] = X_va[col].fillna("Missing").astype(str)
 
             try:
                 model = self._build_classifier(
@@ -208,14 +222,18 @@ class CatBoostPipelineModel(BaseModel):
 
     def fit_final(self, X: pd.DataFrame, y: pd.Series, random_seed: int = 42) -> CatBoostClassifier:
         """Fits a final champion model on the entire dataset using the configured hyperparameters."""
-        categorical_cols = X.select_dtypes(include=["object", "category"]).columns.tolist()
+        categorical_cols = self._detect_categorical_cols(X)
+        X_fit = X.copy()
+        for col in categorical_cols:
+            X_fit[col] = X_fit[col].fillna("Missing").astype(str)
+
         try:
             model = self._build_classifier(
                 random_seed=random_seed,
                 categorical_cols=categorical_cols,
                 task_type=self.device,
             )
-            model.fit(X, y, verbose=False)
+            model.fit(X_fit, y, verbose=False)
         except (CatBoostError, RuntimeError) as e:
             if self.device == "GPU":
                 logger.warning("GPU final fit failed (%s). Falling back to CPU.", e)
@@ -225,12 +243,43 @@ class CatBoostPipelineModel(BaseModel):
                     categorical_cols=categorical_cols,
                     task_type="CPU",
                 )
-                model.fit(X, y, verbose=False)
+                model.fit(X_fit, y, verbose=False)
             else:
                 raise e
 
         self.champion_model = model
         return model
+
+    def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
+        """Generates class probability predictions using the champion model."""
+        if not self.champion_model:
+            raise RuntimeError("Champion model is not fitted or loaded yet.")
+        categorical_cols = self._detect_categorical_cols(X)
+        X_pred = X.copy()
+        for col in categorical_cols:
+            X_pred[col] = X_pred[col].fillna("Missing").astype(str)
+
+        # Align columns with trained model feature names if available
+        if hasattr(self.champion_model, "feature_names_") and self.champion_model.feature_names_:
+            expected_cols = list(self.champion_model.feature_names_)
+            for col in expected_cols:
+                if col not in X_pred.columns:
+                    X_pred[col] = 0
+            X_pred = X_pred[expected_cols]
+
+        return self.champion_model.predict_proba(X_pred)[:, 1]
+
+    @classmethod
+    def load_model(cls, path: Path, config: Optional[HyperparameterConfig] = None) -> "CatBoostPipelineModel":
+        """Loads a persisted CatBoost model from disk."""
+        path = Path(path)
+        if not path.exists():
+            raise FileNotFoundError(f"Model file not found at {path}")
+        model_instance = cls(config=config or HyperparameterConfig())
+        cb = CatBoostClassifier()
+        cb.load_model(str(path))
+        model_instance.champion_model = cb
+        return model_instance
 
     def save_model(self, path: Path) -> Path:
         """Saves champion model to disk."""

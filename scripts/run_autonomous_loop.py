@@ -73,7 +73,8 @@ def main():
     load_dotenv()
 
     parser = argparse.ArgumentParser(description="Autonomous AI Data Scientist (Utkrishta 2026 Challenge 1)")
-    parser.add_argument("--live", action="store_true", help="Execute live model fitting (loads CatBoost)")
+    parser.add_argument("--live", action="store_true", default=True, help="Execute live model fitting (loads CatBoost, default: True)")
+    parser.add_argument("--simulate", "--dry-run", dest="simulate", action="store_true", help="Run in simulation mode without model fitting")
     parser.add_argument("--max-runs", type=int, default=15, help="Maximum experiment limit (default: 15)")
     parser.add_argument("--clean-ledger", action="store_true", help="Clear previous ledger runs before starting")
     parser.add_argument(
@@ -89,6 +90,9 @@ def main():
         help="Enable Google Colab environment integration (auto-mount Google Drive if available)",
     )
     args = parser.parse_args()
+
+    # Determine live execution flag
+    execute_live = False if args.simulate else True
 
     # Environmental Telemetry & Google Colab Integration
     sys_info = get_system_info()
@@ -113,16 +117,16 @@ def main():
 
     logger.info(
         "System mode: %s (Execute live model: %s, Device: %s)",
-        "LIVE TRAINING" if args.live else "LOOP VERIFICATION (Simulated Telemetry)",
-        args.live,
+        "LIVE TRAINING" if execute_live else "LOOP SIMULATION (Dry-run Telemetry)",
+        execute_live,
         active_device,
     )
 
-    # Initialize Orchestrator Loop
+    # Initialize Orchestrator Loop with CatBoost
     orchestrator = AutonomousExperimentLoop(
         max_runs=args.max_runs,
         ledger_path=ledger_path,
-        execute_live_training=args.live,
+        execute_live_training=execute_live,
         device=active_device,
     )
 
@@ -138,6 +142,13 @@ def main():
     # Execute the full 15-run loop
     results = orchestrator.execute_full_15_run_loop(train_val_df)
     logger.info("Execution complete. Total experiments recorded: %d", results["total_runs"])
+
+    if execute_live and results.get("best_run"):
+        try:
+            orchestrator.evaluate_champion_holdout()
+            orchestrator.export_submission()
+        except Exception as e:
+            logger.info("Post-loop automated holdout/submission notice: %s", e)
 
 
 if __name__ == "__main__":

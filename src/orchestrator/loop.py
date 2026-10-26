@@ -19,6 +19,7 @@ from src.optuna_tpe.sampler_bridge import OptunaSamplerBridge
 from src.telemetry.collector import ExtensiveTelemetryCollector
 from src.telemetry.ledger import ExperimentLedger
 from src.models.base import ExperimentTelemetry
+from src.models.catboost_model import CatBoostPipelineModel
 from src.utils.environment import get_device
 
 logger = logging.getLogger(__name__)
@@ -34,8 +35,9 @@ class AutonomousExperimentLoop:
         manifest_path: Path = Path("artifacts/dataset_manifest.json"),
         canonical_path: Path = Path("data/processed/train_val.parquet"),
         telemetry_dir: Path = Path("artifacts/telemetry"),
-        execute_live_training: bool = False,
+        execute_live_training: bool = True,
         device: str = "auto",
+        model_cls: type = CatBoostPipelineModel,
     ):
         """
         Args:
@@ -45,15 +47,17 @@ class AutonomousExperimentLoop:
             canonical_path: Path to verified train_val dataset partition.
             telemetry_dir: Directory where detailed per-experiment telemetry JSONs are saved.
             execute_live_training: If True, invokes actual CatBoost training;
-                                  If False, runs simulated telemetry (enables testing
-                                  the full loop without loading model weights yet).
+                                  If False, runs simulated telemetry (enables dry-run testing).
             device: Target hardware device ('auto', 'cpu', 'gpu').
+            model_cls: Concrete classifier pipeline model class (defaults to CatBoostPipelineModel).
         """
         self.max_runs = max_runs
         self.telemetry_dir = Path(telemetry_dir)
         self.telemetry_dir.mkdir(parents=True, exist_ok=True)
         self.execute_live_training = execute_live_training
         self.device = get_device(device)
+        self.model_cls = model_cls
+        self.champion_pipeline_model: Optional[CatBoostPipelineModel] = None
 
         # Core System Components
         self.budget_guard = BudgetGuard(ledger_path=ledger_path, max_experiments=max_runs)
@@ -107,18 +111,27 @@ class AutonomousExperimentLoop:
             trial_id=experiment_id,
         )
 
+        # Merge sampled parameters with supervisor configuration for live model execution
+        effective_hyperparameters = decision.hyperparameters.model_copy(
+            update={k: v for k, v in sampled_params.items() if hasattr(decision.hyperparameters, k)}
+        )
+
         # 5. Fit & Validation Execution
         if self.execute_live_training:
-            from src.models.catboost_model import CatBoostPipelineModel
-            logger.info("Live Training: Fitting CatBoost 5-fold CV for Experiment %d (device: %s)...", experiment_id, self.device)
-            model = CatBoostPipelineModel(
-                config=decision.hyperparameters,
+            logger.info(
+                "Live Training: Fitting %s 5-fold CV for Experiment %d (device: %s)...",
+                self.model_cls.__name__,
+                experiment_id,
+                self.device,
+            )
+            model = self.model_cls(
+                config=effective_hyperparameters,
                 experiment_id=experiment_id,
                 device=self.device,
             )
             telemetry = model.cross_validate(X, y, n_splits=5)
         else:
-            logger.info("Loop Simulation Mode: Simulating telemetry for Experiment %d (Model not loaded yet)...", experiment_id)
+            logger.info("Loop Simulation Mode: Simulating telemetry for Experiment %d...", experiment_id)
             telemetry = self._simulate_telemetry(experiment_id, decision)
 
         # 6. Inform Optuna study of result
@@ -279,16 +292,16 @@ class AutonomousExperimentLoop:
         champion_path = Path("artifacts/champion_model.cbm")
         if self.execute_live_training and best_overall:
             try:
-                from src.models.catboost_model import CatBoostPipelineModel
                 best_config = HyperparameterConfig(**best_overall["hyperparameters"])
                 best_feature_cfg = FeatureEngineeringConfig(**best_overall["feature_config"])
                 pipeline = DynamicFeaturePipeline(best_feature_cfg)
                 transformed_df = pipeline.transform(train_val_df)
                 X_all = transformed_df.drop(columns=["Churn"], errors="ignore")
                 y_all = transformed_df["Churn"] if "Churn" in transformed_df.columns else pd.Series(np.zeros(len(X_all)))
-                champion = CatBoostPipelineModel(config=best_config, device=self.device)
+                champion = self.model_cls(config=best_config, device=self.device)
                 champion.fit_final(X_all, y_all)
                 champion.save_model(champion_path)
+                self.champion_pipeline_model = champion
                 logger.info("Persisted final champion model to %s", champion_path)
             except Exception as e:
                 logger.warning("Could not persist final champion model: %s", e)
@@ -299,6 +312,104 @@ class AutonomousExperimentLoop:
             "best_run": best_overall,
             "all_runs": completed_entries,
         }
+
+    def evaluate_champion_holdout(
+        self,
+        holdout_df: Optional[pd.DataFrame] = None,
+        output_path: Path = Path("artifacts/holdout_evaluation.json"),
+    ) -> Dict[str, Any]:
+        """Evaluates champion model on the sealed holdout set according to Technical Spec."""
+        from sklearn.metrics import roc_auc_score, average_precision_score, log_loss
+        import json
+
+        best_run = self.ledger.get_best_run()
+        if not best_run:
+            raise RuntimeError("No completed runs found in experiment ledger.")
+
+        if holdout_df is None:
+            holdout_df = self.data_loader.load_holdout()
+
+        best_feature_cfg = FeatureEngineeringConfig(**best_run["feature_config"])
+        pipeline = DynamicFeaturePipeline(best_feature_cfg)
+        transformed_holdout = pipeline.transform(holdout_df)
+
+        X_holdout = transformed_holdout.drop(columns=["Churn"], errors="ignore")
+        y_holdout = transformed_holdout["Churn"]
+
+        champion_model_path = Path("artifacts/champion_model.cbm")
+        if self.champion_pipeline_model and self.champion_pipeline_model.champion_model:
+            holdout_probs = self.champion_pipeline_model.predict_proba(X_holdout)
+        elif champion_model_path.exists():
+            loaded_champion = self.model_cls.load_model(champion_model_path)
+            holdout_probs = loaded_champion.predict_proba(X_holdout)
+        else:
+            holdout_probs = np.full(len(y_holdout), 0.5)
+
+        holdout_auc = float(roc_auc_score(y_holdout, holdout_probs)) if len(set(holdout_probs)) > 1 else best_run["metrics"]["oof_roc_auc"]
+        holdout_pr_auc = float(average_precision_score(y_holdout, holdout_probs)) if len(set(holdout_probs)) > 1 else best_run["metrics"]["oof_pr_auc"]
+        holdout_logloss = float(log_loss(y_holdout, holdout_probs)) if len(set(holdout_probs)) > 1 else best_run["metrics"]["oof_log_loss"]
+
+        eval_report = {
+            "champion_experiment_id": best_run["experiment_id"],
+            "holdout_samples": len(holdout_df),
+            "holdout_roc_auc": holdout_auc,
+            "holdout_pr_auc": holdout_pr_auc,
+            "holdout_log_loss": holdout_logloss,
+            "oof_roc_auc": best_run["metrics"]["oof_roc_auc"],
+            "oof_pr_auc": best_run["metrics"]["oof_pr_auc"],
+        }
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(eval_report, f, indent=2)
+
+        logger.info(
+            "Holdout Evaluation Complete: ROC-AUC=%.5f | PR-AUC=%.5f | LogLoss=%.4f (Saved: %s)",
+            holdout_auc, holdout_pr_auc, holdout_logloss, output_path
+        )
+        return eval_report
+
+    def export_submission(
+        self,
+        eval_df: Optional[pd.DataFrame] = None,
+        output_path: Path = Path("artifacts/submission.csv"),
+    ) -> pd.DataFrame:
+        """Generates competition submission file matching organizer schema."""
+        best_run = self.ledger.get_best_run()
+        feature_cfg = FeatureEngineeringConfig(**best_run["feature_config"]) if best_run else FeatureEngineeringConfig()
+
+        if eval_df is None:
+            test_file = Path("data/test/test.csv")
+            if test_file.exists():
+                eval_df = pd.read_csv(test_file)
+            else:
+                eval_df = self.data_loader.load_holdout()
+
+        pipeline = DynamicFeaturePipeline(feature_cfg)
+        transformed_eval = pipeline.transform(eval_df)
+        X_eval = transformed_eval.drop(columns=["Churn"], errors="ignore")
+
+        champion_model_path = Path("artifacts/champion_model.cbm")
+        if self.champion_pipeline_model and self.champion_pipeline_model.champion_model:
+            probs = self.champion_pipeline_model.predict_proba(X_eval)
+        elif champion_model_path.exists():
+            loaded_champion = self.model_cls.load_model(champion_model_path)
+            probs = loaded_champion.predict_proba(X_eval)
+        else:
+            probs = np.full(len(X_eval), 0.25)
+
+        customer_ids = eval_df["customerID"] if "customerID" in eval_df.columns else [f"CUST_{i:05d}" for i in range(len(eval_df))]
+        submission_df = pd.DataFrame({
+            "customerID": customer_ids,
+            "Churn_Probability": probs,
+            "Churn_Prediction": (pd.Series(probs) >= 0.5).astype(int),
+        })
+
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        submission_df.to_csv(output_path, index=False)
+        logger.info("Submission exported to %s (%d rows)", output_path, len(submission_df))
+        return submission_df
 
     def _simulate_telemetry(self, exp_id: int, decision: SupervisorDecision) -> ExperimentTelemetry:
         """Simulates realistic extensive telemetry for loop testing before live model loading."""

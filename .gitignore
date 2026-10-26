@@ -48,6 +48,7 @@ htmlcov/
 # Logs & temporary files
 *.log
 *.sqlite3-journal
+artifacts/telemetry/
 catboost_info/
 *.db
 *.db-journal
