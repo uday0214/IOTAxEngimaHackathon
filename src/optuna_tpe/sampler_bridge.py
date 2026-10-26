@@ -1,7 +1,7 @@
 """Bridges Supervisor curated parameter regions into single-trial Optuna steps."""
 
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import optuna
 from src.supervisor.schemas import HyperparameterConfig
 
@@ -19,11 +19,13 @@ class OptunaSamplerBridge:
             load_if_exists=True,
             sampler=optuna.samplers.TPESampler(multivariate=True, seed=42),
         )
+        self.current_trial: Optional[optuna.trial.Trial] = None
 
     def sample_parameters(self, supervisor_params: HyperparameterConfig, trial_id: int) -> Dict[str, Any]:
         """Samples refined parameters around supervisor-indicated centers using TPE."""
         # Create an Optuna trial manually
-        trial = self.study.ask()
+        self.current_trial = self.study.ask()
+        trial = self.current_trial
 
         # Narrow sampling around Supervisor targets
         c_lr = supervisor_params.learning_rate
@@ -44,6 +46,10 @@ class OptunaSamplerBridge:
     def record_result(self, trial_number: int, roc_auc: float) -> None:
         """Tell the study the result of the completed experiment trial."""
         try:
-            self.study.tell(trial_number, roc_auc)
+            if self.current_trial is not None:
+                self.study.tell(self.current_trial, roc_auc)
+                self.current_trial = None
+            else:
+                self.study.tell(trial_number, roc_auc)
         except Exception as e:
             logger.warning("Could not record trial %d in Optuna study: %s", trial_number, e)

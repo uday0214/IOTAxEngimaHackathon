@@ -362,6 +362,7 @@ The Supervisor can toggle or weight specific feature engineering blocks in `Expe
 * **SDK**: `google-genai` (current official Google GenAI SDK) or `google-generativeai`.
 * **Model**: `gemini-2.5-flash` for rapid structured inference, or `gemini-2.5-pro` for deep analytical reasoning.
 * **Structured Output**: Strictly enforced using Gemini's native `response_schema` (Pydantic models) to eliminate JSON parsing failures.
+* **Key Ingestion & Cloud Isolation**: Key resolved via `os.getenv("GEMINI_API_KEY")` locally or natively via Google Colab Secrets `google.colab.userdata.get("GEMINI_API_KEY")`. If no key is supplied, client gracefully engages deterministic `MOCK_SUPERVISOR` mode for offline simulation and testing.
 
 ### 8.2 Supervisor Pydantic Data Contracts
 
@@ -416,6 +417,11 @@ IOTAxEnigmaHackathon/
 ├── pyproject.toml               # Project dependencies and tool configs
 ├── requirements.txt             # Locked Python dependencies
 ├── .env.example                 # Template for GEMINI_API_KEY and paths
+├── docs/
+│   ├── ARCHITECTURE.md          # High-level architecture specification
+│   └── GOOGLE_COLAB_TRAINING.md # Comprehensive Google Colab & GPU training guide
+├── notebooks/
+│   └── colab_training.ipynb     # Turnkey one-click Google Colab training notebook
 ├── configs/
 │   ├── baseline_config.yaml     # Experiment 1 initial configuration
 │   └── schema.json              # JSON schema for pipeline configuration
@@ -461,21 +467,27 @@ IOTAxEnigmaHackathon/
 │   │   ├── collector.py         # Collects fold loss, ROC/PR, confusion matrices
 │   │   ├── shap_analyzer.py     # Fast TreeSHAP computation
 │   │   └── ledger.py            # Thread-safe append to experiments.jsonl & SQLite
-│   └── orchestrator/
+│   ├── orchestrator/
+│   │   ├── __init__.py
+│   │   └── loop.py              # Main 15-iteration autonomous loop & champion save
+│   └── utils/
 │       ├── __init__.py
-│       └── loop.py              # Main 15-iteration autonomous loop
+│       └── environment.py       # Google Colab detection, GPU detection, device resolver
 ├── artifacts/
 │   ├── experiment_ledger.jsonl  # Append-only chronological run history
-│   ├── telemetry/               # Detailed per-run metrics and loss curves
-│   ├── figures/                 # ROC curves, PR curves, SHAP summary plots
-│   └── models/                  # Checkpointed weights of best model(s)
+│   ├── champion_model.cbm       # Persisted champion model weights
+│   ├── holdout_evaluation.json  # Sealed holdout metrics evaluation report
+│   ├── submission.csv           # Final standardized organizer submission file
+│   └── dataset_manifest.json    # Cryptographic SHA-256 & content row registry
 ├── scripts/
+│   ├── prepare_data.py          # Prepares data partitions and cryptographic manifest
 │   ├── run_autonomous_loop.py   # CLI entry point to start the 15-run loop
 │   ├── evaluate_holdout.py      # Post-experiment 15 holdout evaluation
 │   └── export_submission.py     # Generates submission CSV for organizer portal
 └── tests/
     ├── test_budget_guard.py     # Verifies that fit() raises error on run 16
     ├── test_data_validation.py  # Tests SHA-256 integrity check and forced canonical reset
+    ├── test_colab_support.py    # Tests Colab detection, GPU resolution, and fallback
     ├── test_data_pipeline.py    # Tests leakage-free transformations
     ├── test_math_engine.py      # Tests DeLong, ECE, and Overfitting calculations
     └── test_supervisor_schema.py# Verifies Gemini structured output parsing
@@ -608,9 +620,19 @@ To enable seamless parallel development across human engineers and AI coding age
   2. If $k=1$, load `baseline_config.yaml`.
   3. If $k > 1$, run `MathematicalInferenceEngine` $\rightarrow$ invoke Gemini Supervisor $\rightarrow$ emit `ExperimentConfig`.
   4. Pass configuration to `OptunaSamplerBridge` for parameter sampling.
-  5. Execute 5-fold CV via `CatBoostPipelineModel`.
+  5. Execute 5-fold CV via `CatBoostPipelineModel` (with device dispatch GPU/CPU).
   6. Compute metrics and append to `experiment_ledger.jsonl`.
-  7. If $k == 15$, trigger holdout evaluation and generate submission artifacts.
+  7. If $k == 15$, fit champion model, trigger holdout evaluation and generate submission artifacts.
+
+### 10.8 `src/utils/environment.py` & Google Colab Cloud Engine
+* **Purpose**: Provide seamless execution in Google Colab, automatic hardware detection, and secure key management.
+* **Key Functions**:
+  - `is_google_colab() -> bool`: Determines if runtime is inside Google Colab environment.
+  - `is_gpu_available() -> bool`: Interrogates PyTorch CUDA and `nvidia-smi` to verify functional GPU acceleration.
+  - `get_device(requested: str = "auto") -> str`: Resolves target device (`"GPU"` or `"CPU"`), automatically matching hardware capability.
+  - `get_gemini_api_key() -> Optional[str]`: Dual-resolution key retriever that queries `os.getenv("GEMINI_API_KEY")` followed by Google Colab Secrets (`userdata.get("GEMINI_API_KEY")`).
+  - `setup_colab_drive()`: Mounts Google Drive and symlinks the `artifacts/` ledger directory to guarantee persistence across Colab session disconnections.
+* **Interactive Colab Notebook (`notebooks/colab_training.ipynb`)**: Provides an end-to-end, zero-setup notebook with GPU acceleration, one-click execution, telemetry charts, and Google Drive syncing.
 
 ---
 

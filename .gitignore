@@ -48,6 +48,7 @@ htmlcov/
 # Logs & temporary files
 *.log
 *.sqlite3-journal
+catboost_info/
 *.db
 *.db-journal
 
