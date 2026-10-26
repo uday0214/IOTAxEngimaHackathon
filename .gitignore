@@ -48,6 +48,8 @@ htmlcov/
 # Logs & temporary files
 *.log
 *.sqlite3-journal
+*.db
+*.db-journal
 
 # Large model binaries / data files
 data/raw/*.csv
