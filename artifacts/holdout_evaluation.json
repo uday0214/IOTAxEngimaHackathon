@@ -1,9 +1,9 @@
 {
   "champion_experiment_id": 1,
-  "holdout_samples": 200,
-  "holdout_roc_auc": 0.7743055555555556,
-  "holdout_pr_auc": 0.512669760699119,
-  "holdout_log_loss": 0.5223204660458838,
-  "oof_roc_auc": 0.7415050414726649,
-  "oof_pr_auc": 0.4616766228140124
+  "holdout_samples": 1409,
+  "holdout_roc_auc": 0.8442687747035573,
+  "holdout_pr_auc": 0.6603804881604064,
+  "holdout_log_loss": 0.41710961841010064,
+  "oof_roc_auc": 0.8505463569068514,
+  "oof_pr_auc": 0.6673948342916591
 }
