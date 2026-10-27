@@ -118,6 +118,21 @@ def get_openrouter_api_key() -> Optional[str]:
     return None
 
 
+def get_openrouter_model(default: str = "nvidia/nemotron-3-ultra-550b-a55b:free") -> str:
+    """Resolves the selected OpenRouter model from environment or Google Colab Secrets."""
+    model = os.getenv("OPENROUTER_MODEL")
+    if model and model.strip():
+        return model.strip()
+
+    if is_google_colab():
+        colab_model = get_colab_secret("OPENROUTER_MODEL")
+        if colab_model and colab_model.strip():
+            logger.info("Resolved OPENROUTER_MODEL from Google Colab userdata Secrets: %s", colab_model.strip())
+            return colab_model.strip()
+
+    return default
+
+
 def get_llm_provider() -> str:
     """Determines the active LLM provider ('openrouter', 'gemini', or 'mock').
 

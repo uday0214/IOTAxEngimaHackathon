@@ -171,3 +171,29 @@ def test_generate_post_training_report_mock():
     assert "# Autonomous AI Data Scientist: 15-Experiment Post-Mortem Report" in report
     assert "Executive Mathematical Scorecard" in report
     assert "0.8685" in report
+
+
+def test_verify_connection():
+    # 1. Mock mode
+    mock_client = SupervisorLLMClient(provider="mock")
+    res_mock = mock_client.verify_connection()
+    assert res_mock["status"] == "MOCK_MODE"
+
+    # 2. OpenRouter with custom model
+    or_client = SupervisorLLMClient(
+        provider="openrouter",
+        api_key="sk-or-test-verification",
+        model_name="nvidia/nemotron-3-ultra-550b-a55b:free",
+    )
+    assert or_client.model_name == "nvidia/nemotron-3-ultra-550b-a55b:free"
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"choices": [{"message": {"content": '{"status": "ready"}'}}]}
+    mock_resp.raise_for_status.return_value = None
+
+    with patch("httpx.Client.post", return_value=mock_resp):
+        res_or = or_client.verify_connection()
+        assert res_or["status"] == "READY"
+        assert res_or["model"] == "nvidia/nemotron-3-ultra-550b-a55b:free"
+        assert res_or["latency_sec"] >= 0.0

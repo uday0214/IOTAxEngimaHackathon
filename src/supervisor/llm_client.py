@@ -8,7 +8,7 @@ import os
 import time
 import json
 import logging
-from typing import Optional
+from typing import Optional, Dict, Any, List
 import httpx
 from pydantic import ValidationError
 
@@ -21,6 +21,7 @@ from src.supervisor.prompt_builder import SupervisorPromptBuilder
 from src.utils.environment import (
     get_gemini_api_key,
     get_openrouter_api_key,
+    get_openrouter_model,
     get_llm_provider,
 )
 
@@ -86,7 +87,7 @@ class SupervisorLLMClient:
         # Resolve credentials and model based on provider
         if self.provider == "openrouter":
             self.api_key = api_key or get_openrouter_api_key()
-            self.model_name = model_name or os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash")
+            self.model_name = model_name or get_openrouter_model()
             self.mock_mode = (
                 os.getenv("MOCK_SUPERVISOR", "false").lower() == "true"
                 or not self.api_key
@@ -122,6 +123,75 @@ class SupervisorLLMClient:
             self.model_name = "mock"
             self.mock_mode = True
             logger.info("SupervisorLLMClient initialized in MOCK MODE.")
+
+    def verify_connection(self) -> Dict[str, Any]:
+        """Probes the configured LLM provider to verify that the model is reachable and loaded."""
+        if self.mock_mode:
+            return {
+                "status": "MOCK_MODE",
+                "provider": "mock",
+                "model": "offline-mock",
+                "latency_sec": 0.0,
+                "message": "Running in offline mock supervisor mode (no API calls).",
+            }
+
+        start_time = time.perf_counter()
+        probe_prompt = 'Output valid JSON: {"status": "ready"}'
+
+        try:
+            if self.provider == "openrouter":
+                url = "https://openrouter.ai/api/v1/chat/completions"
+                headers = {
+                    "Authorization": f"Bearer {self.api_key}",
+                    "HTTP-Referer": "https://github.com/uday0214/IOTAxEngimaHackathon",
+                    "X-Title": "IOTAxEnigma Autonomous ML Orchestrator",
+                    "Content-Type": "application/json",
+                }
+                payload = {
+                    "model": self.model_name,
+                    "messages": [{"role": "user", "content": probe_prompt}],
+                    "temperature": 0.1,
+                }
+                with httpx.Client(timeout=30.0) as client:
+                    resp = client.post(url, headers=headers, json=payload)
+                    resp.raise_for_status()
+                    latency = time.perf_counter() - start_time
+                    return {
+                        "status": "READY",
+                        "provider": "openrouter",
+                        "model": self.model_name,
+                        "latency_sec": round(latency, 2),
+                        "message": f"Successfully verified OpenRouter model: {self.model_name}",
+                    }
+            elif self.provider == "gemini":
+                self._call_gemini_api(probe_prompt)
+                latency = time.perf_counter() - start_time
+                return {
+                    "status": "READY",
+                    "provider": "gemini",
+                    "model": self.model_name,
+                    "latency_sec": round(latency, 2),
+                    "message": f"Successfully verified Google Gemini model: {self.model_name}",
+                }
+            else:
+                return {
+                    "status": "MOCK_MODE",
+                    "provider": "mock",
+                    "model": "offline-mock",
+                    "latency_sec": 0.0,
+                    "message": "Supervisor running in offline mock mode.",
+                }
+        except Exception as e:
+            latency = time.perf_counter() - start_time
+            logger.error("Supervisor model verification probe failed: %s", e)
+            return {
+                "status": "FAILED",
+                "provider": self.provider,
+                "model": self.model_name,
+                "latency_sec": round(latency, 2),
+                "error": str(e),
+                "message": f"Verification failed for {self.model_name}: {e}",
+            }
 
     def decide_next_experiment(self, prompt: str, experiment_id: int) -> SupervisorDecision:
         """Invokes the configured LLM provider to emit a typed SupervisorDecision."""
