@@ -1,0 +1,28 @@
+{
+  "model_family": "catboost",
+  "model_path": "artifacts/champion_model.joblib",
+  "cbm_path": "artifacts/champion_model.cbm",
+  "experiment_id": 12,
+  "oof_roc_auc": 0.8505781937213599,
+  "oof_pr_auc": 0.6645320622823557,
+  "hyperparameters": {
+    "model_family": "catboost",
+    "learning_rate": 0.025,
+    "depth": 5,
+    "l2_leaf_reg": 14.0,
+    "iterations": 3000,
+    "subsample": 0.9,
+    "bagging_temperature": 0.3,
+    "random_strength": 1.0,
+    "class_weight_mode": "Balanced",
+    "early_stopping_rounds": 50,
+    "random_seed": 42,
+    "n_estimators": null,
+    "min_samples_split": 2,
+    "min_samples_leaf": 1,
+    "C": 1.0,
+    "penalty": "l2",
+    "solver": "lbfgs",
+    "colsample_bytree": 0.8
+  }
+}
