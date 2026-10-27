@@ -100,11 +100,44 @@ Ensure your output strictly adheres to this structure:
         top_str = ", ".join([f"{f.get('feature')} ({f.get('importance')}%)" for f in current_telemetry.get("top_features", [])[:4]])
         bottom_str = ", ".join([f.get("feature") for f in current_telemetry.get("bottom_features", [])[:4]])
 
-        prompt = f"""=== EXPERIMENT PLANNING CYCLE: PREPARING RUN {experiment_id} OF 15 ===
-Remaining Experiment Budget: {remaining_budget} runs (STRICT LIMIT: Cannot exceed 15 runs).
+        # Format historical trajectory table across previous runs
+        history_rows = []
+        for h in (history or []):
+            h_id = h.get("experiment_id", 0)
+            h_hyp = h.get("hyperparameters", {})
+            h_met = h.get("metrics", {})
+            h_auc = h_met.get("oof_roc_auc", 0.0)
+            h_pr = h_met.get("oof_pr_auc", 0.0)
+            h_omega = h_met.get("overfitting_index", 0.0)
+            delta_best = h_auc - best_auc
+            delta_str = "CHAMPION" if abs(delta_best) < 1e-5 else f"{delta_best:+.5f}"
+            history_rows.append(
+                f"| {h_id:2d}  | {h_hyp.get('depth', 6):2d}  | {h_hyp.get('l2_leaf_reg', 3.0):5.1f} | {h_hyp.get('learning_rate', 0.05):.4f} | {h_hyp.get('iterations', 1000):4d} | {h_hyp.get('class_weight_mode', 'None'):11s} | {h_auc:11.5f} | {h_pr:10.5f} | {h_omega:6.2f}% | {delta_str:13s} |"
+            )
 
-[CURRENT BEST BENCHMARK]
-Best 5-Fold OOF ROC-AUC achieved so far: {best_auc:.5f}
+        history_table = (
+            "| Run | Dep | L2Reg | LR     | Iter | Class Weight| OOF ROC-AUC | OOF PR-AUC | Omega   | Status/Delta  |\n"
+            "|-----|-----|-------|--------|------|-------------|-------------|------------|---------|---------------|\n"
+            + "\n".join(history_rows)
+        ) if history_rows else "  (No prior runs recorded yet - This is Experiment 1 benchmark)"
+
+        # Format math diagnosis bullet points
+        math_bullets_str = "\n".join([f"- {b}" for b in getattr(math_diagnosis, "mathematical_rationale_bullet_points", [])])
+        if not math_bullets_str:
+            math_bullets_str = f"- Recommended Action: {math_diagnosis.recommended_action}"
+
+        prompt = f"""=== EXPERIMENT PLANNING CYCLE: PREPARING RUN {experiment_id} OF 15 ===
+Remaining Experiment Budget: {remaining_budget} runs (STRICT HARD LIMIT: Cannot exceed 15 runs).
+
+[ACTIVE SCIENTIFIC REGIME]
+{getattr(math_diagnosis, 'regime_phase', 'GLOBAL EXPLORATION')}
+- Mathematical Velocity (dROC-AUC/dRun): {getattr(math_diagnosis, 'roc_auc_velocity', 0.0):+.5f}
+- Current Best 5-Fold OOF ROC-AUC:        {best_auc:.5f}
+
+=======================================================
+COMPLETE EXPERIMENT TRAJECTORY HISTORY SO FAR
+=======================================================
+{history_table}
 
 =======================================================
 EXHAUSTIVE TRAINING PROCESS TELEMETRY (Run {experiment_id - 1})
@@ -144,18 +177,65 @@ EXHAUSTIVE TRAINING PROCESS TELEMETRY (Run {experiment_id - 1})
    - False Positive Rate:           {current_telemetry.get('false_positive_rate', 0.0)*100:.1f}%
 
 =======================================================
-MATHEMATICAL INFERENCE REPORT & SYNTHESIS
+MATHEMATICAL DIAGNOSTICS & BOUNDING DIRECTIVES
 =======================================================
-- Paired Fold p-value vs Best Run: {math_diagnosis.delong_p_value_vs_best}
-- Early Stopping Status:           {math_diagnosis.early_stopping_analysis}
-- Strategic Engine Recommendation: {math_diagnosis.recommended_action}
+{math_bullets_str}
+- Suggested Tree Depth Bounds:    {getattr(math_diagnosis, 'suggested_depth_bounds', (4, 6))}
+- Suggested L2 Reg Bounds:        {getattr(math_diagnosis, 'suggested_l2_bounds', (3.0, 15.0))}
+- Suggested Learning Rate Bounds: {getattr(math_diagnosis, 'suggested_lr_bounds', (0.02, 0.05))}
+- Recommended Class Weight Mode:  {getattr(math_diagnosis, 'recommended_class_weight', 'None')}
 
 =======================================================
 TASK FOR EXPERIMENT {experiment_id}
 =======================================================
-1. Mathematically evaluate the Overfitting Index, early stopping utilization, and feature signals.
-2. Formulate a hypothesis explaining what hyperparameters or feature toggles need to change to beat ROC-AUC {best_auc:.5f}.
-3. Propose any zero/low-signal features to prune in `drop_low_importance_features`.
+1. Mathematically evaluate the historical trajectory and the Run {experiment_id - 1} telemetry.
+2. DO NOT repeat hyperparameter combinations already attempted in the history table.
+3. Formulate a scientific hypothesis citing specific telemetry metrics (Omega, PR-AUC, ECE, or tail slope).
 4. Output your decision strictly following the SupervisorDecision JSON schema.
 """
         return prompt
+
+    def build_post_training_report_prompt(
+        self,
+        all_runs: List[Dict[str, Any]],
+        best_run: Dict[str, Any],
+        baseline_run: Dict[str, Any],
+        summary_stats: Dict[str, Any],
+    ) -> str:
+        """Constructs the prompt for the Supervisor to analyze the full 15-run trajectory."""
+        return f"""You are the Principal AI Supervisor analyzing the completed 15-run autonomous machine learning cycle on the Telco Customer Churn dataset.
+
+=======================================================
+EXECUTIVE RUN SUMMARY
+=======================================================
+- Total Experiments Executed: 15 / 15 (Hard Budget Compliant, Efficiency Factor = 1.0)
+- Champion Experiment: Run #{best_run.get('experiment_id')}
+  * Champion 5-Fold OOF ROC-AUC: {best_run.get('metrics', {}).get('oof_roc_auc', 0.0):.5f}
+  * Champion 5-Fold OOF PR-AUC:  {best_run.get('metrics', {}).get('oof_pr_auc', 0.0):.5f}
+  * Champion Log Loss:          {best_run.get('metrics', {}).get('oof_log_loss', 0.0):.4f}
+  * Champion Overfitting Index: {best_run.get('metrics', {}).get('overfitting_index', 0.0):.2f}%
+  * Champion ECE Score:         {best_run.get('metrics', {}).get('ece_score', 0.0):.4f}
+
+- Baseline Experiment: Run #{baseline_run.get('experiment_id')}
+  * Baseline ROC-AUC: {baseline_run.get('metrics', {}).get('oof_roc_auc', 0.0):.5f}
+  * Baseline PR-AUC:  {baseline_run.get('metrics', {}).get('oof_pr_auc', 0.0):.5f}
+  * Baseline Log Loss:{baseline_run.get('metrics', {}).get('oof_log_loss', 0.0):.4f}
+
+- Net Improvements:
+  * Delta ROC-AUC: {summary_stats.get('net_improvements', {}).get('delta_roc_auc', 0.0):+.5f} ({summary_stats.get('net_improvements', {}).get('pct_gain_roc_auc', 0.0):+.2f}%)
+  * Delta PR-AUC:  {summary_stats.get('net_improvements', {}).get('delta_pr_auc', 0.0):+.5f} ({summary_stats.get('net_improvements', {}).get('pct_gain_pr_auc', 0.0):+.2f}%)
+  * Delta Log Loss:{summary_stats.get('net_improvements', {}).get('delta_log_loss', 0.0):+.4f}
+  * Delta Omega:   {summary_stats.get('net_improvements', {}).get('delta_overfitting_index', 0.0):+.2f}%
+
+=======================================================
+REQUIRED REPORT OUTPUT
+=======================================================
+Synthesize an authoritative, mathematically rigorous post-mortem report formatted in clean Markdown.
+Structure your report with the following visualizable sections:
+1. # Executive Mathematical Scorecard (Table showing Baseline vs Champion metrics, % improvements, and Leaderboard Efficiency Factor = 1.0)
+2. # Hyperparameter Sensitivity & Trajectory Analysis (Discussion of tree depth, L2 regularization, learning rate annealing, and iterations)
+3. # Feature Representation & SHAP Attribution (Which generated features provided signal vs which were successfully pruned)
+4. # Error Dynamics & Probability Calibration (Analysis of Overfitting Index Omega, Youden J* threshold, Expected Calibration Error, and PR-AUC class imbalance trade-offs)
+5. # Failure Analysis & Dead Ends (Hypotheses tested that failed or underperformed, with mathematical explanations)
+6. # Production Deployment Guidelines (Operational threshold recommendations for Telco churn intervention)
+"""

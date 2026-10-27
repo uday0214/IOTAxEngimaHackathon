@@ -135,3 +135,39 @@ def test_gemini_supervisor_client_backward_compatibility():
         client = GeminiSupervisorClient()
         assert client.provider == "openrouter"
         assert client.api_key == "sk-or-compat-key"
+
+
+def test_generate_post_training_report_mock():
+    client = SupervisorLLMClient(provider="mock")
+    best_run = {
+        "experiment_id": 14,
+        "hyperparameters": {"depth": 5, "learning_rate": 0.02, "l2_leaf_reg": 12.0, "iterations": 1500},
+        "feature_config": {"enable_interaction_terms": True, "drop_low_importance_features": ["gender"]},
+        "metrics": {"oof_roc_auc": 0.8685, "oof_pr_auc": 0.698, "oof_log_loss": 0.358, "overfitting_index": 4.47, "ece_score": 0.019},
+    }
+    baseline_run = {
+        "experiment_id": 1,
+        "metrics": {"oof_roc_auc": 0.842, "oof_pr_auc": 0.6568, "oof_log_loss": 0.412, "overfitting_index": 10.19},
+    }
+    summary_stats = {
+        "net_improvements": {
+            "delta_roc_auc": 0.0265,
+            "pct_gain_roc_auc": 3.15,
+            "delta_pr_auc": 0.0412,
+            "pct_gain_pr_auc": 6.27,
+            "delta_log_loss": -0.054,
+            "delta_overfitting_index": -5.72,
+        }
+    }
+
+    report = client.generate_post_training_report(
+        all_runs=[baseline_run, best_run],
+        best_run=best_run,
+        baseline_run=baseline_run,
+        summary_stats=summary_stats,
+    )
+
+    assert isinstance(report, str)
+    assert "# Autonomous AI Data Scientist: 15-Experiment Post-Mortem Report" in report
+    assert "Executive Mathematical Scorecard" in report
+    assert "0.8685" in report

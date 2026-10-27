@@ -23,6 +23,15 @@ def test_classification_diagnostics_calculation():
     assert "confusion_matrix_05" in diag
     assert "false_negative_rate" in diag
 
+    # Check new visualizable curve points and histogram
+    assert "roc_curve_points" in diag
+    assert len(diag["roc_curve_points"]) > 0
+    assert "pr_curve_points" in diag
+    assert len(diag["pr_curve_points"]) > 0
+    assert "calibration_curve_points" in diag
+    assert "probability_histogram" in diag
+    assert len(diag["probability_histogram"]) == 10
+
 
 def test_feature_importance_spectrum_sorting():
     importances = {
@@ -67,3 +76,57 @@ def test_telemetry_artifact_saving(tmp_path: Path):
         loaded = json.load(f)
     assert loaded["experiment_id"] == 1
     assert loaded["oof_roc_auc"] == 0.852
+
+
+def test_trajectory_summary_and_dashboard_generation(tmp_path: Path):
+    from src.telemetry.visualization import generate_interactive_dashboard
+
+    mock_entries = [
+        {
+            "experiment_id": 1,
+            "hyperparameters": {"depth": 6, "learning_rate": 0.05, "l2_leaf_reg": 3.0, "iterations": 1000, "class_weight_mode": "None"},
+            "feature_config": {"enable_interaction_terms": False, "drop_low_importance_features": []},
+            "metrics": {
+                "oof_roc_auc": 0.842,
+                "oof_pr_auc": 0.650,
+                "oof_log_loss": 0.410,
+                "overfitting_index": 10.2,
+                "generalization_gap": 0.040,
+                "ece_score": 0.045,
+                "optimal_youden_threshold": 0.38,
+                "training_duration_seconds": 1.2,
+            },
+        },
+        {
+            "experiment_id": 2,
+            "hyperparameters": {"depth": 5, "learning_rate": 0.04, "l2_leaf_reg": 5.0, "iterations": 1200, "class_weight_mode": "None"},
+            "feature_config": {"enable_interaction_terms": True, "drop_low_importance_features": ["gender"]},
+            "metrics": {
+                "oof_roc_auc": 0.855,
+                "oof_pr_auc": 0.672,
+                "oof_log_loss": 0.385,
+                "overfitting_index": 6.5,
+                "generalization_gap": 0.025,
+                "ece_score": 0.032,
+                "optimal_youden_threshold": 0.38,
+                "training_duration_seconds": 1.4,
+            },
+        },
+    ]
+
+    summary_file = ExtensiveTelemetryCollector.save_trajectory_summary(mock_entries, output_dir=tmp_path)
+    assert summary_file.exists()
+
+    with open(summary_file, encoding="utf-8") as f:
+        summary_data = json.load(f)
+
+    assert summary_data["total_experiments"] == 2
+    assert summary_data["champion_experiment_id"] == 2
+    assert summary_data["net_improvements"]["delta_roc_auc"] > 0
+    assert len(summary_data["trajectory_time_series"]) == 2
+
+    # Dashboard generation test
+    dash_html = tmp_path / "dashboard.html"
+    res_dash = generate_interactive_dashboard(summary_path=summary_file, output_html=dash_html)
+    assert res_dash.exists()
+    assert dash_html.stat().st_size > 500
