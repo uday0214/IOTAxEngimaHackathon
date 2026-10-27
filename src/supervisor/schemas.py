@@ -31,12 +31,17 @@ class FeatureEngineeringConfig(BaseModel):
 
 
 class SupervisorDecision(BaseModel):
-    """Structured decision emitted by Gemini Supervisor for the next experiment."""
+    """Structured decision emitted by Gemini/OpenRouter Supervisor for the next experiment."""
     experiment_id: int = Field(..., ge=1, le=15, description="Next experiment number (1-15)")
     hypothesis: str = Field(..., description="Scientific hypothesis explaining the proposed changes")
     mathematical_justification: str = Field(
         ..., description="Explicit references to Overfitting Index, DeLong p-value, or SHAP stats"
     )
     hyperparameters: HyperparameterConfig
-    feature_config: FeatureEngineeringConfig
-    expected_outcome: str = Field(..., description="Anticipated directional impact on ROC-AUC and PR-AUC")
+    feature_config: FeatureEngineeringConfig = Field(
+        default_factory=FeatureEngineeringConfig, description="Feature engineering and pruning toggles"
+    )
+    expected_outcome: str = Field(
+        default="Targeting ROC-AUC and PR-AUC improvement with regularized generalization.",
+        description="Anticipated directional impact on ROC-AUC and PR-AUC",
+    )

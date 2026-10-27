@@ -49,7 +49,34 @@ Every decision you make MUST be rooted in empirical mathematics and learning dyn
 OUTPUT CONTRACT
 =========================================
 You must output a strictly valid JSON response adhering to the SupervisorDecision schema.
-Ensure hypothesis and mathematical_justification explicitly cite the quantitative telemetry provided.
+Do NOT enclose your output in markdown code blocks or explanatory conversational prose; output ONLY the JSON object.
+Ensure your output strictly adheres to this structure:
+{
+  "experiment_id": <int>,
+  "hypothesis": "<detailed scientific hypothesis citing telemetry>",
+  "mathematical_justification": "<explicit quantitative reasoning citing Overfitting Index / Generalization Gap>",
+  "hyperparameters": {
+    "model_family": "catboost",
+    "learning_rate": <float between 0.005 and 0.3>,
+    "depth": <int between 3 and 10>,
+    "l2_leaf_reg": <float between 0.1 and 50.0>,
+    "iterations": <int between 300 and 3000>,
+    "subsample": <float between 0.4 and 1.0>,
+    "bagging_temperature": <float between 0.0 and 1.0>,
+    "random_strength": <float between 0.0 and 10.0>,
+    "class_weight_mode": "None" | "Balanced" | "SqrtBalanced",
+    "early_stopping_rounds": <int between 10 and 100>,
+    "random_seed": 42
+  },
+  "feature_config": {
+    "enable_charge_ratios": true | false,
+    "enable_tenure_cohorts": true | false,
+    "enable_service_density": true | false,
+    "enable_interaction_terms": true | false,
+    "drop_low_importance_features": ["feature_name", ...]
+  },
+  "expected_outcome": "<anticipated impact on ROC-AUC and PR-AUC>"
+}
 """
 
     def build_prompt(
