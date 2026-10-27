@@ -9,28 +9,30 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   
+  <!-- Three.js 3D Engine & Chart.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <style>
     :root {
       /* Linear Dark High-End Architectural Palette */
       --bg-canvas: #08090A;
-      --bg-surface: #0F1012;
-      --bg-surface-elevated: #16181C;
-      --bg-surface-hover: #1C1F24;
+      --bg-surface: rgba(15, 16, 18, 0.82);
+      --bg-surface-elevated: rgba(22, 24, 28, 0.88);
+      --bg-surface-hover: rgba(28, 31, 36, 0.92);
       
-      --border-subtle: rgba(255, 255, 255, 0.07);
-      --border-medium: rgba(255, 255, 255, 0.12);
-      --border-focus: rgba(255, 255, 255, 0.22);
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --border-medium: rgba(255, 255, 255, 0.14);
+      --border-focus: rgba(255, 255, 255, 0.25);
       
       --text-high: #F7F8F8;
       --text-medium: #8A8F98;
       --text-dim: #545861;
       
       --accent-purple: #5E6AD2;
-      --accent-purple-dim: rgba(94, 106, 210, 0.12);
+      --accent-purple-dim: rgba(94, 106, 210, 0.15);
       --accent-emerald: #4EBE9E;
-      --accent-emerald-dim: rgba(78, 190, 158, 0.12);
+      --accent-emerald-dim: rgba(78, 190, 158, 0.14);
 
       --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
       --font-mono: 'JetBrains Mono', monospace;
@@ -51,9 +53,35 @@
       flex-direction: column;
       -webkit-font-smoothing: antialiased;
       overflow-x: hidden;
+      position: relative;
     }
 
-    /* SUBTLE LINEAR AMBIENT GRADIENT */
+    /* 3D INTERACTIVE CANVAS BACKGROUND */
+    #webgl-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    /* INTERACTIVE MOUSE LIGHT GLOW */
+    .cursor-glow {
+      position: fixed;
+      width: 580px;
+      height: 580px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(94, 106, 210, 0.08) 0%, rgba(94, 106, 210, 0.02) 45%, transparent 70%);
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 0;
+      will-change: left, top;
+      transition: opacity 0.3s ease;
+    }
+
+    /* AMBIENT RADIAL TOP GLOW */
     .ambient-glow {
       position: fixed;
       top: 0;
@@ -61,7 +89,7 @@
       transform: translateX(-50%);
       width: 1100px;
       height: 480px;
-      background: radial-gradient(ellipse at 50% 0%, rgba(94, 106, 210, 0.10) 0%, rgba(8, 9, 10, 0) 72%);
+      background: radial-gradient(ellipse at 50% 0%, rgba(94, 106, 210, 0.12) 0%, rgba(8, 9, 10, 0) 72%);
       pointer-events: none;
       z-index: 0;
     }
@@ -84,8 +112,8 @@
       border-bottom: 1px solid var(--border-subtle);
       position: sticky;
       top: 0;
-      background: rgba(8, 9, 10, 0.88);
-      backdrop-filter: blur(18px);
+      background: rgba(8, 9, 10, 0.85);
+      backdrop-filter: blur(20px);
       z-index: 100;
     }
 
@@ -129,6 +157,7 @@
       padding: 4px;
       border-radius: 10px;
       border: 1px solid var(--border-subtle);
+      backdrop-filter: blur(12px);
     }
 
     .sub-tab {
@@ -146,12 +175,12 @@
 
     .sub-tab:hover {
       color: var(--text-high);
-      background: rgba(255, 255, 255, 0.04);
+      background: rgba(255, 255, 255, 0.05);
     }
 
     .sub-tab.active {
       color: var(--text-high);
-      background: rgba(255, 255, 255, 0.09);
+      background: rgba(255, 255, 255, 0.1);
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
     }
 
@@ -170,11 +199,13 @@
       border: 1px solid var(--border-medium);
       background: rgba(255, 255, 255, 0.05);
       color: var(--text-high);
+      backdrop-filter: blur(8px);
     }
 
     .linear-btn:hover {
-      background: rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.12);
       border-color: var(--border-focus);
+      transform: translateY(-1px);
     }
 
     .linear-btn.primary {
@@ -185,6 +216,7 @@
 
     .linear-btn.primary:hover {
       background: #E5E6E8;
+      box-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
     }
 
     /* MAIN VIEW CONTAINER */
@@ -195,7 +227,7 @@
 
     .view-subsection {
       display: none;
-      animation: fadeIn 0.2s ease-out;
+      animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
     .view-subsection.active {
@@ -203,11 +235,11 @@
     }
 
     @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(6px); }
+      from { opacity: 0; transform: translateY(8px); }
       to { opacity: 1; transform: translateY(0); }
     }
 
-    /* HERO SECTION: ULTRA-MINIMAL, ROOMY, CRISP */
+    /* HERO SECTION: ULTRA-MINIMAL, AIRY, HIGH-IMPACT */
     .hero-container {
       padding: 88px 0 96px;
       max-width: 920px;
@@ -245,11 +277,22 @@
     }
 
     .pillar-card {
-      background: transparent;
-      padding: 0 4px;
+      background: rgba(15, 16, 18, 0.4);
+      border: 1px solid transparent;
+      border-radius: 16px;
+      padding: 24px 20px;
       display: flex;
       flex-direction: column;
       cursor: pointer;
+      backdrop-filter: blur(6px);
+      transition: all 0.25s ease;
+    }
+
+    .pillar-card:hover {
+      background: rgba(15, 16, 18, 0.7);
+      border-color: var(--border-medium);
+      transform: translateY(-4px);
+      box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.6);
     }
 
     .pillar-fig-tag {
@@ -257,15 +300,15 @@
       font-size: 11px;
       letter-spacing: 0.14em;
       color: var(--text-dim);
-      margin-bottom: 24px;
+      margin-bottom: 18px;
     }
 
     .pillar-visual {
-      height: 150px;
+      height: 140px;
       display: flex;
       align-items: center;
       justify-content: center;
-      margin-bottom: 30px;
+      margin-bottom: 24px;
     }
 
     .wireframe-svg {
@@ -274,12 +317,12 @@
       stroke: var(--text-medium);
       stroke-width: 1.15;
       fill: none;
-      transition: all 0.2s ease;
+      transition: all 0.25s ease;
     }
 
     .pillar-card:hover .wireframe-svg {
       stroke: var(--text-high);
-      transform: translateY(-4px);
+      transform: scale(1.05);
     }
 
     .pillar-title {
@@ -306,12 +349,13 @@
       border-radius: 18px;
       overflow: hidden;
       margin-bottom: 96px;
+      backdrop-filter: blur(14px);
     }
 
     .stat-cell {
       background: var(--bg-surface);
       padding: 36px 40px;
-      transition: background 0.15s;
+      transition: background 0.2s;
     }
 
     .stat-cell:hover {
@@ -383,6 +427,13 @@
       border: 1px solid var(--border-subtle);
       border-radius: 20px;
       padding: 40px 44px;
+      backdrop-filter: blur(16px);
+      transition: border-color 0.2s, transform 0.2s;
+    }
+
+    .chart-card:hover {
+      border-color: var(--border-medium);
+      transform: translateY(-2px);
     }
 
     .chart-card-head {
@@ -423,11 +474,18 @@
       border: 1px solid var(--border-subtle);
       border-radius: 20px;
       padding: 40px 44px;
+      backdrop-filter: blur(16px);
+      transition: all 0.2s ease;
+    }
+
+    .param-box:hover {
+      transform: translateY(-2px);
+      border-color: var(--border-medium);
     }
 
     .param-box.champion {
-      border-color: rgba(78, 190, 158, 0.35);
-      background: linear-gradient(180deg, rgba(78, 190, 158, 0.04) 0%, var(--bg-surface) 100%);
+      border-color: rgba(78, 190, 158, 0.4);
+      background: linear-gradient(180deg, rgba(78, 190, 158, 0.06) 0%, var(--bg-surface) 100%);
     }
 
     .param-box-head {
@@ -449,7 +507,7 @@
     .param-pill.champ {
       background: var(--accent-emerald-dim);
       color: var(--accent-emerald);
-      border: 1px solid rgba(78, 190, 158, 0.3);
+      border: 1px solid rgba(78, 190, 158, 0.35);
     }
 
     .param-pill.trial {
@@ -493,6 +551,13 @@
       border: 1px solid var(--border-subtle);
       border-radius: 16px;
       padding: 32px 34px;
+      backdrop-filter: blur(14px);
+      transition: all 0.2s ease;
+    }
+
+    .insight-card:hover {
+      border-color: var(--border-medium);
+      transform: translateY(-2px);
     }
 
     .insight-title {
@@ -515,6 +580,7 @@
       border-radius: 20px;
       padding: 48px 52px;
       margin-bottom: 56px;
+      backdrop-filter: blur(16px);
     }
 
     .policy-table {
@@ -542,7 +608,7 @@
     }
 
     .policy-table tr.highlight-policy td {
-      background: rgba(255, 255, 255, 0.03);
+      background: rgba(255, 255, 255, 0.04);
       color: var(--text-high);
       font-weight: 500;
     }
@@ -554,6 +620,7 @@
       border-radius: 20px;
       overflow: hidden;
       margin-bottom: 56px;
+      backdrop-filter: blur(16px);
     }
 
     .ledger-head-bar {
@@ -595,12 +662,12 @@
     }
 
     .ledger-table tr:hover td {
-      background: rgba(255, 255, 255, 0.03);
+      background: rgba(255, 255, 255, 0.04);
       color: var(--text-high);
     }
 
     .ledger-table tr.champ-row td {
-      background: rgba(78, 190, 158, 0.04);
+      background: rgba(78, 190, 158, 0.05);
       color: var(--text-high);
     }
 
@@ -611,6 +678,7 @@
       border-radius: 20px;
       padding: 40px 44px;
       margin-bottom: 56px;
+      backdrop-filter: blur(16px);
     }
 
     .agent-chat-stream {
@@ -690,6 +758,7 @@
     .pill-btn:hover {
       background: rgba(255, 255, 255, 0.08);
       color: var(--text-high);
+      border-color: var(--border-focus);
     }
 
     /* FOOTER */
@@ -716,6 +785,13 @@
 </head>
 <body>
 
+  <!-- INTERACTIVE 3D WEBGL CANVAS -->
+  <canvas id="webgl-canvas"></canvas>
+
+  <!-- MOUSE SPOTLIGHT GLOW -->
+  <div class="cursor-glow" id="cursorGlow"></div>
+
+  <!-- AMBIENT TOP GLOW -->
   <div class="ambient-glow"></div>
 
   <div class="container">
@@ -727,7 +803,6 @@
           <path d="M4.5 16.5L16.5 4.5M7.5 19.5L19.5 7.5M10.5 22.5L22.5 10.5" stroke-linecap="round"/>
         </svg>
         <span class="brand-text">Retention.ai</span>
-        <span class="brand-badge">TELCO // 15 RUNS</span>
       </div>
 
       <!-- SUBSECTION TABS -->
@@ -1098,7 +1173,262 @@
 
   <!-- SCRIPT -->
   <script>
-    // Dynamic run dataset supporting multiple classifier families
+    // ========================================================
+    // 3D FLOATING CUBES & WIREFRAME INTERACTIVE BACKGROUND
+    // Directly inspired by dark geometric 3D imagery
+    // ========================================================
+    (function init3DBackground() {
+      const canvas = document.getElementById("webgl-canvas");
+      const glow = document.getElementById("cursorGlow");
+      if (!canvas) return;
+
+      let mouseX = 0;
+      let mouseY = 0;
+      let targetMouseX = 0;
+      let targetMouseY = 0;
+      let clickPulse = 0;
+
+      // Track cursor position
+      window.addEventListener("mousemove", (e) => {
+        const x = e.clientX;
+        const y = e.clientY;
+        targetMouseX = (x / window.innerWidth) * 2 - 1;
+        targetMouseY = -(y / window.innerHeight) * 2 + 1;
+
+        if (glow) {
+          glow.style.left = `${x}px`;
+          glow.style.top = `${y}px`;
+        }
+      });
+
+      // Interactive Click Shockwave
+      window.addEventListener("mousedown", () => {
+        clickPulse = 1.0;
+        if (glow) {
+          glow.style.width = "750px";
+          glow.style.height = "750px";
+        }
+      });
+
+      window.addEventListener("mouseup", () => {
+        if (glow) {
+          glow.style.width = "580px";
+          glow.style.height = "580px";
+        }
+      });
+
+      // Check for Three.js
+      if (typeof THREE !== "undefined") {
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 160;
+
+        const renderer = new THREE.WebGLRenderer({
+          canvas: canvas,
+          alpha: true,
+          antialias: true,
+          powerPreference: "high-performance"
+        });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+        // Ambient & Directional Lights
+        const ambientLight = new THREE.AmbientLight(0x181c2b, 1.4);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0x7c8ba1, 1.2);
+        dirLight.position.set(100, 150, 100);
+        scene.add(dirLight);
+
+        // Interactive Cursor Point Light (soft indigo / cyan)
+        const mouseLight = new THREE.PointLight(0x5e6ad2, 2.8, 320);
+        mouseLight.position.set(0, 0, 80);
+        scene.add(mouseLight);
+
+        // Create ~32 Floating 3D Cubes (Solid Dark Slate + Wireframe Edges)
+        const cubes = [];
+        const cubeCount = 28;
+
+        const solidMat = new THREE.MeshStandardMaterial({
+          color: 0x111318,
+          roughness: 0.35,
+          metalness: 0.85
+        });
+
+        const wireframeColors = [0x5e6ad2, 0x4ebe9e, 0x8a8f98, 0x38bdf8, 0x2e3440];
+
+        for (let i = 0; i < cubeCount; i++) {
+          const size = Math.random() * 18 + 10;
+          const geom = new THREE.BoxGeometry(size, size, size);
+          const edges = new THREE.EdgesGeometry(geom);
+
+          const group = new THREE.Group();
+
+          // Some are solid cubes with subtle line edges
+          if (i % 3 !== 0) {
+            const mesh = new THREE.Mesh(geom, solidMat);
+            group.add(mesh);
+
+            const lineMat = new THREE.LineBasicMaterial({
+              color: 0x2e3440,
+              transparent: true,
+              opacity: 0.6
+            });
+            const wire = new THREE.LineSegments(edges, lineMat);
+            group.add(wire);
+          } else {
+            // Some are pure luminous wireframe cubes (like in image 2)
+            const color = wireframeColors[i % wireframeColors.length];
+            const lineMat = new THREE.LineBasicMaterial({
+              color: color,
+              transparent: true,
+              opacity: 0.55
+            });
+            const wire = new THREE.LineSegments(edges, lineMat);
+            group.add(wire);
+          }
+
+          // Random spatial coordinates across field of view
+          const x = (Math.random() - 0.5) * 260;
+          const y = (Math.random() - 0.5) * 200;
+          const z = (Math.random() - 0.5) * 160 - 20;
+
+          group.position.set(x, y, z);
+          scene.add(group);
+
+          cubes.push({
+            group: group,
+            baseX: x,
+            baseY: y,
+            baseZ: z,
+            rotSpeedX: (Math.random() - 0.5) * 0.008,
+            rotSpeedY: (Math.random() - 0.5) * 0.010,
+            rotSpeedZ: (Math.random() - 0.5) * 0.006,
+            phase: Math.random() * Math.PI * 2,
+            floatSpeed: Math.random() * 0.008 + 0.004,
+            floatAmp: Math.random() * 12 + 6
+          });
+        }
+
+        // Animation Loop
+        let time = 0;
+        function animate() {
+          requestAnimationFrame(animate);
+          time += 0.016;
+
+          // Smooth mouse damping
+          mouseX += (targetMouseX - mouseX) * 0.04;
+          mouseY += (targetMouseY - mouseY) * 0.04;
+
+          // Camera parallax tilt
+          camera.position.x = mouseX * 22;
+          camera.position.y = mouseY * 16;
+          camera.lookAt(0, 0, 0);
+
+          // Update interactive light position
+          mouseLight.position.x = mouseX * 120;
+          mouseLight.position.y = mouseY * 90;
+
+          // Decay click pulse
+          if (clickPulse > 0) {
+            clickPulse *= 0.94;
+            if (clickPulse < 0.01) clickPulse = 0;
+          }
+
+          // Animate and float each cube
+          for (let i = 0; i < cubes.length; i++) {
+            const c = cubes[i];
+            const g = c.group;
+
+            // Rotation
+            const boost = 1 + clickPulse * 4;
+            g.rotation.x += c.rotSpeedX * boost;
+            g.rotation.y += c.rotSpeedY * boost;
+            g.rotation.z += c.rotSpeedZ * boost;
+
+            // Smooth vertical floating wave
+            g.position.y = c.baseY + Math.sin(time * c.floatSpeed * 60 + c.phase) * c.floatAmp;
+
+            // Interactive repulsion from cursor
+            const dx = g.position.x - mouseLight.position.x;
+            const dy = g.position.y - mouseLight.position.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            if (dist < 70) {
+              const force = (1 - dist / 70) * 14;
+              g.position.x += (dx / dist) * force * 0.15;
+              g.position.y += (dy / dist) * force * 0.15;
+            } else {
+              // Return gently to base position
+              g.position.x += (c.baseX - g.position.x) * 0.03;
+            }
+          }
+
+          renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // Responsive resize
+        window.addEventListener("resize", () => {
+          camera.aspect = window.innerWidth / window.innerHeight;
+          camera.updateProjectionMatrix();
+          renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+      } else {
+        // Fallback: 2D Canvas 3D projection if Three.js is not reachable offline
+        const ctx = canvas.getContext("2d");
+        function resizeFallback() {
+          canvas.width = window.innerWidth;
+          canvas.height = window.innerHeight;
+        }
+        resizeFallback();
+        window.addEventListener("resize", resizeFallback);
+
+        const nodes = [];
+        for (let i = 0; i < 24; i++) {
+          nodes.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            vx: (Math.random() - 0.5) * 0.5,
+            vy: (Math.random() - 0.5) * 0.5,
+            size: Math.random() * 20 + 10,
+            angle: Math.random() * Math.PI
+          });
+        }
+
+        function drawFallback() {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.strokeStyle = "rgba(94, 106, 210, 0.25)";
+          ctx.lineWidth = 1;
+
+          for (let i = 0; i < nodes.length; i++) {
+            const n = nodes[i];
+            n.x += n.vx;
+            n.y += n.vy;
+            n.angle += 0.01;
+
+            if (n.x < -40) n.x = canvas.width + 40;
+            if (n.x > canvas.width + 40) n.x = -40;
+            if (n.y < -40) n.y = canvas.height + 40;
+            if (n.y > canvas.height + 40) n.y = -40;
+
+            ctx.save();
+            ctx.translate(n.x, n.y);
+            ctx.rotate(n.angle);
+            ctx.strokeRect(-n.size / 2, -n.size / 2, n.size, n.size);
+            ctx.restore();
+          }
+          requestAnimationFrame(drawFallback);
+        }
+        drawFallback();
+      }
+    })();
+
+    // ========================================================
+    // DYNAMIC RUN DATASET & CONTROLLER
+    // ========================================================
     const experimentData = [
       { run_id: 1, model: "CatBoost", depth: 6, lr: 0.05, l2: 3.0, iters: 1000, bag: 0.2, roc: 0.8505, pr: 0.6674, loss: 0.4100, gap: 0.0414, takeaway: "Balanced bias-variance trade-off." },
       { run_id: 2, model: "CatBoost", depth: 7, lr: 0.03, l2: 5.0, iters: 2000, bag: 0.5, roc: 0.8493, pr: 0.6678, loss: 0.4110, gap: 0.0429, takeaway: "Slight leaf overfitting on boundary noise." },
