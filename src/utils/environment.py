@@ -95,6 +95,49 @@ def get_gemini_api_key() -> Optional[str]:
     return None
 
 
+def get_openrouter_api_key() -> Optional[str]:
+    """Resolves the OpenRouter API key from environment variables or Google Colab Secrets."""
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+
+    # 1. Environment variable (e.g. .env or exported env var)
+    key = os.getenv("OPENROUTER_API_KEY")
+    if key and key.strip() and key != "your_openrouter_api_key_here":
+        return key.strip()
+
+    # 2. Google Colab userdata secrets
+    if is_google_colab():
+        colab_key = get_colab_secret("OPENROUTER_API_KEY")
+        if colab_key and colab_key.strip():
+            logger.info("Resolved OPENROUTER_API_KEY securely from Google Colab userdata Secrets.")
+            return colab_key.strip()
+
+    return None
+
+
+def get_llm_provider() -> str:
+    """Determines the active LLM provider ('openrouter', 'gemini', or 'mock').
+
+    Preference order:
+    1. Explicit LLM_PROVIDER env variable ('openrouter', 'gemini', 'mock')
+    2. OpenRouter (if OPENROUTER_API_KEY is configured)
+    3. Gemini (if GEMINI_API_KEY is configured)
+    4. Mock (offline simulation mode)
+    """
+    explicit = os.getenv("LLM_PROVIDER")
+    if explicit and explicit.strip():
+        return explicit.strip().lower()
+
+    if get_openrouter_api_key():
+        return "openrouter"
+    if get_gemini_api_key():
+        return "gemini"
+    return "mock"
+
+
 def get_system_info() -> Dict[str, Any]:
     """Collects hardware and runtime environment telemetry for diagnostics."""
     colab = is_google_colab()
