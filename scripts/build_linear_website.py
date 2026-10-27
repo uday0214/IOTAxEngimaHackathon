@@ -67,6 +67,22 @@ def main():
       padding: 0;
     }}
 
+    /* REFINED MINIMAL SCROLLBARS */
+    ::-webkit-scrollbar {{
+      width: 6px;
+      height: 6px;
+    }}
+    ::-webkit-scrollbar-track {{
+      background: transparent;
+    }}
+    ::-webkit-scrollbar-thumb {{
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 999px;
+    }}
+    ::-webkit-scrollbar-thumb:hover {{
+      background: rgba(255, 255, 255, 0.22);
+    }}
+
     body {{
       font-family: var(--font-sans);
       background-color: var(--bg-canvas);
@@ -133,9 +149,10 @@ def main():
       justify-content: space-between;
       height: 72px;
       border-bottom: 1px solid var(--border-subtle);
-      background: rgba(8, 9, 10, 0.7);
-      backdrop-filter: blur(14px);
-      -webkit-backdrop-filter: blur(14px);
+      background: rgba(8, 9, 10, 0.75);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
       position: sticky;
       top: 0;
       z-index: 100;
@@ -215,12 +232,14 @@ def main():
       display: inline-flex;
       align-items: center;
       gap: 8px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 2px 6px rgba(0, 0, 0, 0.25);
       transition: all 0.15s ease;
     }}
 
     .linear-btn:hover {{
       background: var(--bg-surface-hover);
       border-color: var(--border-focus);
+      transform: translateY(-1px);
     }}
 
     .linear-btn.primary {{
@@ -228,10 +247,12 @@ def main():
       color: #08090A;
       border-color: #F7F8F8;
       font-weight: 600;
+      box-shadow: 0 2px 10px rgba(255, 255, 255, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.8);
     }}
 
     .linear-btn.primary:hover {{
       background: #E1E3E5;
+      box-shadow: 0 4px 14px rgba(255, 255, 255, 0.25);
     }}
 
     /* MAIN SECTIONS CONTROLLER */
@@ -292,8 +313,11 @@ def main():
     }}
 
     .pillar-card {{
-      background: rgba(15, 16, 18, 0.4);
-      border: 1px solid transparent;
+      background: rgba(15, 16, 18, 0.55);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border-subtle);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 8px 24px -4px rgba(0, 0, 0, 0.35);
       border-radius: 8px;
       padding: 24px 20px;
       position: relative;
@@ -305,6 +329,7 @@ def main():
       background: var(--bg-surface);
       border-color: var(--border-medium);
       transform: translateY(-2px);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 14px 32px -6px rgba(0, 0, 0, 0.5);
     }}
 
     .pillar-fig-tag {{
@@ -360,6 +385,9 @@ def main():
       border: 1px solid var(--border-subtle);
       border-radius: 8px;
       background: var(--bg-surface);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 10px 30px -4px rgba(0, 0, 0, 0.4);
       overflow: hidden;
       margin-bottom: 48px;
     }}
@@ -389,6 +417,7 @@ def main():
       font-weight: 600;
       color: var(--text-high);
       letter-spacing: -0.02em;
+      font-feature-settings: 'tnum' 1;
     }}
 
     .stat-sub {{
@@ -498,10 +527,19 @@ def main():
 
     .chart-card {{
       background: var(--bg-surface);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
       border: 1px solid var(--border-subtle);
       border-radius: 8px;
       padding: 20px 22px;
       position: relative;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 8px 24px -4px rgba(0, 0, 0, 0.38);
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }}
+
+    .chart-card:hover {{
+      border-color: var(--border-medium);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), 0 12px 28px -4px rgba(0, 0, 0, 0.5);
     }}
 
     .chart-card-head {{
@@ -549,21 +587,26 @@ def main():
 
     .tourney-card {{
       background: var(--bg-surface);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       border: 1px solid var(--border-subtle);
       border-radius: 8px;
       padding: 18px;
       position: relative;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 6px 18px rgba(0, 0, 0, 0.35);
       transition: all 0.2s ease;
     }}
 
     .tourney-card:hover {{
       border-color: var(--border-medium);
       transform: translateY(-2px);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 12px 28px rgba(0, 0, 0, 0.5);
     }}
 
     .tourney-card.champ {{
       border-color: rgba(78, 190, 158, 0.4);
       background: linear-gradient(180deg, rgba(78, 190, 158, 0.08) 0%, rgba(15, 16, 18, 0.85) 100%);
+      box-shadow: inset 0 1px 0 rgba(78, 190, 158, 0.2), 0 0 20px rgba(78, 190, 158, 0.1);
     }}
 
     .tourney-rank {{
@@ -592,6 +635,7 @@ def main():
       font-family: var(--font-mono);
       font-weight: 600;
       color: var(--text-high);
+      font-feature-settings: 'tnum' 1;
     }}
 
     /* STEPPER BAR */
@@ -613,6 +657,7 @@ def main():
       font-size: 11px;
       cursor: pointer;
       white-space: nowrap;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
       transition: all 0.2s ease;
     }}
 
@@ -626,6 +671,7 @@ def main():
       border-color: var(--accent-purple);
       color: var(--text-high);
       font-weight: 600;
+      box-shadow: 0 0 10px rgba(94, 106, 210, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.12);
     }}
 
     .step-btn.champ-step {{
@@ -635,14 +681,18 @@ def main():
     .step-btn.champ-step.active {{
       background: var(--accent-emerald-dim);
       border-color: var(--accent-emerald);
+      box-shadow: 0 0 10px rgba(78, 190, 158, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.15);
     }}
 
     .exp-meta-card {{
       background: var(--bg-surface);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       border: 1px solid var(--border-subtle);
       border-radius: 8px;
       padding: 20px;
       margin-bottom: 20px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 8px 24px -4px rgba(0, 0, 0, 0.35);
     }}
 
     .pill-tag {{
@@ -716,14 +766,18 @@ def main():
 
     .param-box {{
       background: var(--bg-surface);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       border: 1px solid var(--border-subtle);
       border-radius: 8px;
       padding: 24px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 8px 24px -4px rgba(0, 0, 0, 0.35);
     }}
 
     .param-box.champion {{
       border-color: rgba(78, 190, 158, 0.4);
-      background: linear-gradient(180deg, rgba(78, 190, 158, 0.05) 0%, rgba(15, 16, 18, 0.82) 100%);
+      background: linear-gradient(180deg, rgba(78, 190, 158, 0.06) 0%, rgba(15, 16, 18, 0.85) 100%);
+      box-shadow: inset 0 1px 0 rgba(78, 190, 158, 0.18), 0 0 20px rgba(78, 190, 158, 0.08);
     }}
 
     .param-box-head {{
@@ -775,14 +829,18 @@ def main():
       font-family: var(--font-mono);
       color: var(--text-high);
       font-weight: 500;
+      font-feature-settings: 'tnum' 1;
     }}
 
     /* HOLDOUT EVALUATION */
     .holdout-panel {{
       background: var(--bg-surface);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
       border: 1px solid var(--border-subtle);
       border-radius: 8px;
       padding: 36px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 10px 30px -4px rgba(0, 0, 0, 0.4);
     }}
 
     .policy-table {{
@@ -823,9 +881,12 @@ def main():
     /* LEDGER TABLE */
     .ledger-table-wrap {{
       background: var(--bg-surface);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
       border: 1px solid var(--border-subtle);
       border-radius: 8px;
       overflow-x: auto;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 10px 30px -4px rgba(0, 0, 0, 0.4);
     }}
 
     .ledger-table {{
@@ -2168,6 +2229,13 @@ def main():
       Chart.defaults.font.family = "'Plus Jakarta Sans', sans-serif";
       Chart.defaults.font.size = 11;
       Chart.defaults.color = "#8A8F98";
+      Chart.defaults.plugins.tooltip.backgroundColor = "rgba(14, 16, 22, 0.94)";
+      Chart.defaults.plugins.tooltip.borderColor = "rgba(255, 255, 255, 0.12)";
+      Chart.defaults.plugins.tooltip.borderWidth = 1;
+      Chart.defaults.plugins.tooltip.padding = 10;
+      Chart.defaults.plugins.tooltip.cornerRadius = 6;
+      Chart.defaults.plugins.tooltip.titleColor = "#F7F8F8";
+      Chart.defaults.plugins.tooltip.bodyColor = "#8A8F98";
       const champ = getChampion();
 
       const trajCanvas = document.getElementById("linearTrajChart");
