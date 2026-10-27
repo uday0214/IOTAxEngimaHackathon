@@ -16,8 +16,9 @@ optuna>=3.4.0
 # Explainability & Diagnostic Metrics
 shap>=0.43.0
 
-# Google GenAI / Gemini API
+# Google GenAI / Gemini / OpenRouter API
 google-genai>=0.1.1
+httpx>=0.25.0
 
 # Schema Validation & Serialization
 pydantic>=2.5.0

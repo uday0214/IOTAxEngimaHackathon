@@ -11,6 +11,8 @@ from src.utils.environment import (
     is_gpu_available,
     get_device,
     get_gemini_api_key,
+    get_openrouter_api_key,
+    get_llm_provider,
     get_system_info,
 )
 from src.supervisor.schemas import HyperparameterConfig
@@ -60,6 +62,39 @@ def test_get_gemini_api_key_from_colab_userdata():
             with patch.dict("sys.modules", {"google.colab": MagicMock(userdata=mock_userdata), "google.colab.userdata": mock_userdata}):
                 with patch("src.utils.environment.get_colab_secret", return_value="colab-secret-key-456"):
                     assert get_gemini_api_key() == "colab-secret-key-456"
+
+
+def test_get_openrouter_api_key_from_env():
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-v1-testkey123"}):
+        assert get_openrouter_api_key() == "sk-or-v1-testkey123"
+
+
+def test_get_openrouter_api_key_from_colab_userdata():
+    mock_userdata = MagicMock()
+    mock_userdata.get.return_value = "sk-or-v1-colab-secret"
+
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": ""}, clear=False):
+        with patch("src.utils.environment.is_google_colab", return_value=True):
+            with patch("src.utils.environment.get_colab_secret", return_value="sk-or-v1-colab-secret"):
+                assert get_openrouter_api_key() == "sk-or-v1-colab-secret"
+
+
+def test_get_llm_provider_selection():
+    # Explicit env variable override
+    with patch.dict(os.environ, {"LLM_PROVIDER": "gemini", "OPENROUTER_API_KEY": "sk-or-123"}):
+        assert get_llm_provider() == "gemini"
+
+    # OpenRouter prioritized when key exists
+    with patch.dict(os.environ, {"LLM_PROVIDER": "", "OPENROUTER_API_KEY": "sk-or-123", "GEMINI_API_KEY": "gem-456"}):
+        assert get_llm_provider() == "openrouter"
+
+    # Gemini when only Gemini key exists
+    with patch.dict(os.environ, {"LLM_PROVIDER": "", "OPENROUTER_API_KEY": "", "GEMINI_API_KEY": "gem-456"}):
+        assert get_llm_provider() == "gemini"
+
+    # Mock when neither exists
+    with patch.dict(os.environ, {"LLM_PROVIDER": "", "OPENROUTER_API_KEY": "", "GEMINI_API_KEY": ""}):
+        assert get_llm_provider() == "mock"
 
 
 def test_catboost_device_initialization_and_fit():

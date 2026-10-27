@@ -30,6 +30,17 @@ class MathDiagnosis:
     calibration_status: str
     recommended_action: str
 
+    # Advanced Mathematical Guidance Attributes
+    regime_phase: str = "GLOBAL EXPLORATION"
+    regime_phase_id: int = 1
+    roc_auc_velocity: float = 0.0
+    best_auc_gap: float = 0.0
+    suggested_depth_bounds: Tuple[int, int] = (4, 7)
+    suggested_l2_bounds: Tuple[float, float] = (3.0, 15.0)
+    suggested_lr_bounds: Tuple[float, float] = (0.02, 0.05)
+    recommended_class_weight: str = "None"
+    mathematical_rationale_bullet_points: List[str] = field(default_factory=list)
+
 
 class MathematicalInferenceEngine:
     """Computes mathematical diagnostics from deep training process data."""
@@ -122,15 +133,76 @@ class MathematicalInferenceEngine:
         else:
             calib_status = f"Well-calibrated probabilities (ECE={ece:.4f})."
 
-        # Strategic recommendation synthesis
+        # Strategic recommendation synthesis & phase determination
+        exp_id = current_telemetry.get("experiment_id", 1)
+        next_exp_id = exp_id + 1
+
+        # Phase determination
+        if next_exp_id <= 4:
+            regime_id = 1
+            regime_name = "PHASE 1: GLOBAL EXPLORATION & STRUCTURAL PROBING"
+            depth_bounds = (4, 7)
+            l2_bounds = (3.0, 8.0)
+            lr_bounds = (0.03, 0.06)
+            cw_rec = "None"
+        elif next_exp_id <= 8:
+            regime_id = 2
+            regime_name = "PHASE 2: DOMAIN FEATURE SYNTHESIS & INTERACTION SEARCH"
+            depth_bounds = (4, 6)
+            l2_bounds = (4.0, 10.0)
+            lr_bounds = (0.025, 0.05)
+            cw_rec = "None"
+        elif next_exp_id <= 12:
+            regime_id = 3
+            regime_name = "PHASE 3: STOCHASTIC REGULARIZATION & LEARNING DYNAMICS"
+            depth_bounds = (4, 5)
+            l2_bounds = (6.0, 15.0)
+            lr_bounds = (0.02, 0.035)
+            cw_rec = "Balanced" if current_telemetry.get("oof_pr_auc", 0.0) < 0.65 else "None"
+        else:
+            regime_id = 4
+            regime_name = "PHASE 4: METRIC CONSOLIDATION, CALIBRATION & THRESHOLDING"
+            depth_bounds = (4, 5)
+            l2_bounds = (8.0, 20.0)
+            lr_bounds = (0.015, 0.03)
+            cw_rec = "Balanced"
+
+        # Trajectory velocity & gap from best
+        current_auc = current_telemetry.get("oof_roc_auc", 0.0)
+        best_auc = best_telemetry.get("oof_roc_auc", current_auc) if best_telemetry else current_auc
+        best_gap = current_auc - best_auc
+
+        auc_velocity = 0.0
+        if ledger_history and len(ledger_history) >= 2:
+            prev_auc = ledger_history[-2].get("metrics", {}).get("oof_roc_auc", current_auc)
+            auc_velocity = current_auc - prev_auc
+
+        # Build specific mathematical rationale bullet points
+        bullets = []
         if overfit_idx > 18.0:
             rec = "CRITICAL OVERFITTING (Omega > 18%): Increase l2_leaf_reg (to >= 8.0), lower tree depth (depth <= 4), and increase bagging_temperature."
+            bullets.append(f"Overfitting Index Omega={overfit_idx:.1f}% indicates excessive model capacity on small sample regime. Reduce depth to {depth_bounds[0]} and increase L2 regularization.")
         elif overfit_idx < 3.0:
             rec = "UNDERFITTING (Omega < 3%): Model capacity insufficient. Increase depth (to 6-8) or enable non-linear interaction terms."
+            bullets.append(f"Overfitting Index Omega={overfit_idx:.1f}% indicates underfitting. Increase depth toward {depth_bounds[1]} or activate domain interaction features.")
         elif tail_slope < -0.0001:
             rec = "LOSS STILL DESCENDING: Validation loss has negative tail slope. Increase iterations or lower learning rate decay."
+            bullets.append(f"Validation loss tail slope ({tail_slope:.6f}) is still descending. Increase iteration budget to allow complete plateau convergence.")
         else:
             rec = "BALANCED REGIME: Focus on feature representation (charge ratios, tenure cohorts) and tuning class weights for PR-AUC."
+            bullets.append(f"Generalization gap is stable (Omega={overfit_idx:.1f}%). Focus on feature enrichment and threshold calibration.")
+
+        if es_fraction <= 0.30:
+            bullets.append(f"Premature early stopping at {es_fraction*100:.1f}% of iteration budget. Lower learning rate toward {lr_bounds[0]} to avoid missing narrow loss minima.")
+        elif es_fraction >= 0.95:
+            bullets.append(f"Model saturated {es_fraction*100:.1f}% of iteration budget. Expand iterations to 1500-2000.")
+
+        if zero_feats or stagnant_feats:
+            prune_candidates = list(set(zero_feats + stagnant_feats[:2]))
+            bullets.append(f"Features {prune_candidates} show near-zero predictive contribution. Pruning recommended via drop_low_importance_features.")
+
+        if ece > 0.05:
+            bullets.append(f"ECE={ece:.4f} reveals probability miscalibration. Setting class_weight_mode='Balanced' will penalize false negative churners and boost PR-AUC.")
 
         return MathDiagnosis(
             overfitting_index=overfit_idx,
@@ -148,4 +220,13 @@ class MathematicalInferenceEngine:
             zero_importance_features=zero_feats,
             calibration_status=calib_status,
             recommended_action=rec,
+            regime_phase=regime_name,
+            regime_phase_id=regime_id,
+            roc_auc_velocity=round(auc_velocity, 5),
+            best_auc_gap=round(best_gap, 5),
+            suggested_depth_bounds=depth_bounds,
+            suggested_l2_bounds=l2_bounds,
+            suggested_lr_bounds=lr_bounds,
+            recommended_class_weight=cw_rec,
+            mathematical_rationale_bullet_points=bullets,
         )

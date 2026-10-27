@@ -131,6 +131,7 @@ source = { editable = "." }
 dependencies = [
     { name = "catboost" },
     { name = "google-genai" },
+    { name = "httpx" },
     { name = "lightgbm" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
@@ -165,6 +166,7 @@ dev = [
 requires-dist = [
     { name = "catboost", specifier = ">=1.2.0" },
     { name = "google-genai", specifier = ">=0.1.1" },
+    { name = "httpx", specifier = ">=0.25.0" },
     { name = "lightgbm", specifier = ">=4.1.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.8.0" },
     { name = "numpy", specifier = ">=2.0.0" },

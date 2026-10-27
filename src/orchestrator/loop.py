@@ -1,5 +1,6 @@
 """Main Autonomous Orchestrator: End-to-end agentic loop for model training."""
 
+import json
 import logging
 from pathlib import Path
 from typing import Optional, Dict, Any, List
@@ -169,6 +170,10 @@ class AutonomousExperimentLoop:
             "confusion_matrix_optimal": telemetry.confusion_matrix_optimal,
             "false_negative_rate": telemetry.false_negative_rate,
             "false_positive_rate": telemetry.false_positive_rate,
+            "roc_curve_points": getattr(telemetry, "roc_curve_points", []),
+            "pr_curve_points": getattr(telemetry, "pr_curve_points", []),
+            "calibration_curve_points": getattr(telemetry, "calibration_curve_points", []),
+            "probability_histogram": getattr(telemetry, "probability_histogram", []),
             "training_duration_seconds": telemetry.training_duration_seconds,
             "device_used": telemetry.device_used,
         }
@@ -288,6 +293,59 @@ class AutonomousExperimentLoop:
                 best_overall["metrics"]["oof_pr_auc"],
             )
 
+        # 4. Save aggregated visualizable trajectory summary
+        trajectory_summary_path = ExtensiveTelemetryCollector.save_trajectory_summary(
+            completed_entries=completed_entries,
+            output_dir=self.telemetry_dir,
+        )
+
+        # Generate standalone interactive HTML dashboard
+        dashboard_html_path = None
+        try:
+            from src.telemetry.visualization import generate_interactive_dashboard
+            dashboard_html_path = generate_interactive_dashboard(
+                summary_path=trajectory_summary_path,
+                output_html=self.telemetry_dir / "trajectory_dashboard.html",
+            )
+        except Exception as e:
+            logger.warning("Could not generate interactive dashboard: %s", e)
+
+        # Load summary stats for final report
+        summary_stats = {}
+        if trajectory_summary_path.exists():
+            try:
+                with open(trajectory_summary_path, encoding="utf-8") as f:
+                    summary_stats = json.load(f)
+            except Exception:
+                pass
+
+        # 5. Generate comprehensive Supervisor Final Audit & Analytical Report
+        logger.info("Generating Supervisor Post-Mortem Report across all %d experiments...", len(completed_entries))
+        final_report_md = self.llm_client.generate_post_training_report(
+            all_runs=completed_entries,
+            best_run=best_overall if best_overall else completed_entries[-1],
+            baseline_run=completed_entries[0],
+            summary_stats=summary_stats,
+        )
+
+        artifacts_base = self.telemetry_dir.parent
+        report_md_path = artifacts_base / "SUPERVISOR_FINAL_REPORT.md"
+        report_md_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(report_md_path, "w", encoding="utf-8") as f:
+            f.write(final_report_md)
+        logger.info("Saved Supervisor Final Markdown Report to %s", report_md_path)
+
+        report_json_path = artifacts_base / "supervisor_final_report.json"
+        report_json_payload = {
+            "summary_stats": summary_stats,
+            "markdown_report": final_report_md,
+            "report_path": str(report_md_path),
+            "trajectory_summary_path": str(trajectory_summary_path),
+        }
+        with open(report_json_path, "w", encoding="utf-8") as f:
+            json.dump(report_json_payload, f, indent=2)
+        logger.info("Saved Supervisor Final JSON Report to %s", report_json_path)
+
         # Persist champion model artifact if live training was executed
         champion_path = Path("artifacts/champion_model.cbm")
         if self.execute_live_training and best_overall:
@@ -311,6 +369,9 @@ class AutonomousExperimentLoop:
             "total_runs": len(completed_entries),
             "best_run": best_overall,
             "all_runs": completed_entries,
+            "final_report_path": report_md_path,
+            "trajectory_summary_path": trajectory_summary_path,
+            "summary_stats": summary_stats,
         }
 
     def evaluate_champion_holdout(
@@ -486,6 +547,22 @@ class AutonomousExperimentLoop:
             confusion_matrix_optimal=[[360, 60], [25, 155]],
             false_negative_rate=0.25 - (exp_id * 0.008),
             false_positive_rate=0.09 - (exp_id * 0.002),
+            roc_curve_points=[
+                {"fpr": round(x, 2), "tpr": round(min(1.0, x ** 0.35 + (exp_id * 0.01)), 4), "threshold": round(1.0 - x, 2)}
+                for x in np.linspace(0, 1, 15)
+            ],
+            pr_curve_points=[
+                {"recall": round(x, 2), "precision": round(max(0.26, 0.88 - (x * 0.35) + (exp_id * 0.008)), 4)}
+                for x in np.linspace(0, 1, 15)
+            ],
+            calibration_curve_points=[
+                {"prob_pred": round(x, 2), "prob_true": round(max(0.0, x + (0.04 - exp_id * 0.003)), 4)}
+                for x in np.linspace(0.05, 0.95, 10)
+            ],
+            probability_histogram=[
+                {"bin_lower": round(i * 0.1, 1), "bin_upper": round((i + 1) * 0.1, 1), "count": int(150 + 20 * np.sin(i))}
+                for i in range(10)
+            ],
             training_duration_seconds=1.2,
             device_used="CPU",
         )

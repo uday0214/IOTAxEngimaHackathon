@@ -216,6 +216,10 @@ class CatBoostPipelineModel(BaseModel):
             confusion_matrix_optimal=diag["confusion_matrix_optimal"],
             false_negative_rate=diag["false_negative_rate"],
             false_positive_rate=diag["false_positive_rate"],
+            roc_curve_points=diag.get("roc_curve_points", []),
+            pr_curve_points=diag.get("pr_curve_points", []),
+            calibration_curve_points=diag.get("calibration_curve_points", []),
+            probability_histogram=diag.get("probability_histogram", []),
             training_duration_seconds=round(elapsed_time, 2),
             device_used=current_task_type,
         )

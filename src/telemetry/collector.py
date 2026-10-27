@@ -14,7 +14,10 @@ from sklearn.metrics import (
     confusion_matrix,
     f1_score,
     matthews_corrcoef,
+    roc_curve,
+    precision_recall_curve,
 )
+from sklearn.calibration import calibration_curve
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +97,72 @@ class ExtensiveTelemetryCollector:
         fnr = float(fn / max(fn + tp, 1))  # Churners missed
         fpr = float(fp / max(fp + tn, 1))  # False alarms
 
+        # 1. ROC curve coordinates (downsampled for plotting)
+        roc_pts: List[Dict[str, float]] = []
+        try:
+            fpr_arr, tpr_arr, thresh_arr = roc_curve(y_true, y_prob)
+            if len(fpr_arr) > 25:
+                indices = np.linspace(0, len(fpr_arr) - 1, 25, dtype=int)
+                roc_pts = [
+                    {
+                        "fpr": round(float(fpr_arr[i]), 4),
+                        "tpr": round(float(tpr_arr[i]), 4),
+                        "threshold": round(float(thresh_arr[i]), 4),
+                    }
+                    for i in indices
+                ]
+            else:
+                roc_pts = [
+                    {"fpr": round(float(f), 4), "tpr": round(float(t), 4), "threshold": round(float(th), 4)}
+                    for f, t, th in zip(fpr_arr, tpr_arr, thresh_arr)
+                ]
+        except Exception:
+            pass
+
+        # 2. Precision-Recall curve coordinates (downsampled for plotting)
+        pr_pts: List[Dict[str, float]] = []
+        try:
+            prec_arr, rec_arr, _ = precision_recall_curve(y_true, y_prob)
+            if len(prec_arr) > 25:
+                indices = np.linspace(0, len(prec_arr) - 1, 25, dtype=int)
+                pr_pts = [
+                    {"precision": round(float(prec_arr[i]), 4), "recall": round(float(rec_arr[i]), 4)}
+                    for i in indices
+                ]
+            else:
+                pr_pts = [
+                    {"precision": round(float(p), 4), "recall": round(float(r), 4)}
+                    for p, r in zip(prec_arr, rec_arr)
+                ]
+        except Exception:
+            pass
+
+        # 3. Probability calibration curve coordinates
+        calib_pts: List[Dict[str, float]] = []
+        try:
+            prob_true, prob_pred = calibration_curve(y_true, y_prob, n_bins=10)
+            calib_pts = [
+                {"prob_pred": round(float(p), 4), "prob_true": round(float(t), 4)}
+                for p, t in zip(prob_pred, prob_true)
+            ]
+        except Exception:
+            pass
+
+        # 4. Prediction probability confidence distribution
+        prob_hist: List[Dict[str, Any]] = []
+        try:
+            counts, bin_edges = np.histogram(y_prob, bins=10, range=(0.0, 1.0))
+            prob_hist = [
+                {
+                    "bin_lower": round(float(bin_edges[i]), 2),
+                    "bin_upper": round(float(bin_edges[i + 1]), 2),
+                    "count": int(counts[i]),
+                }
+                for i in range(10)
+            ]
+        except Exception:
+            pass
+
         return {
             "oof_roc_auc": oof_roc_auc,
             "oof_pr_auc": oof_pr_auc,
@@ -109,6 +178,10 @@ class ExtensiveTelemetryCollector:
             "confusion_matrix_optimal": cm_opt,
             "false_negative_rate": fnr,
             "false_positive_rate": fpr,
+            "roc_curve_points": roc_pts,
+            "pr_curve_points": pr_pts,
+            "calibration_curve_points": calib_pts,
+            "probability_histogram": prob_hist,
         }
 
     @staticmethod
@@ -164,3 +237,125 @@ class ExtensiveTelemetryCollector:
             json.dump(telemetry_dict, f, indent=2)
         logger.info("Saved extensive training telemetry artifact to %s", file_path)
         return file_path
+
+    @staticmethod
+    def save_trajectory_summary(
+        completed_entries: List[Dict[str, Any]],
+        output_dir: Path = Path("artifacts/telemetry"),
+    ) -> Path:
+        """Compiles and persists a full visualizable trajectory dataset across all experiments."""
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        summary_path = output_dir / "full_trajectory_summary.json"
+
+        if not completed_entries:
+            return summary_path
+
+        time_series = []
+        best_auc = -1.0
+        champion_entry = completed_entries[0]
+
+        for entry in completed_entries:
+            exp_id = entry.get("experiment_id", 0)
+            metrics = entry.get("metrics", {})
+            hyp = entry.get("hyperparameters", {})
+            feat = entry.get("feature_config", {})
+
+            auc = float(metrics.get("oof_roc_auc", 0.0))
+            if auc > best_auc:
+                best_auc = auc
+                champion_entry = entry
+
+            time_series.append({
+                "experiment_id": exp_id,
+                "oof_roc_auc": auc,
+                "oof_pr_auc": float(metrics.get("oof_pr_auc", 0.0)),
+                "oof_log_loss": float(metrics.get("oof_log_loss", 0.0)),
+                "oof_brier_score": float(metrics.get("oof_brier_score", 0.0)),
+                "overfitting_index": float(metrics.get("overfitting_index", 0.0)),
+                "generalization_gap": float(metrics.get("generalization_gap", 0.0)),
+                "ece_score": float(metrics.get("ece_score", 0.0)),
+                "optimal_youden_threshold": float(metrics.get("optimal_youden_threshold", 0.5)),
+                "depth": int(hyp.get("depth", 6)),
+                "learning_rate": float(hyp.get("learning_rate", 0.05)),
+                "l2_leaf_reg": float(hyp.get("l2_leaf_reg", 3.0)),
+                "iterations": int(hyp.get("iterations", 1000)),
+                "bagging_temperature": float(hyp.get("bagging_temperature", 0.2) or 0.2),
+                "class_weight_mode": str(hyp.get("class_weight_mode", "None")),
+                "enable_interaction_terms": bool(feat.get("enable_interaction_terms", False)),
+                "pruned_features_count": len(feat.get("drop_low_importance_features", [])),
+                "training_duration_seconds": float(metrics.get("training_duration_seconds", 0.0)),
+            })
+
+        baseline_entry = completed_entries[0]
+        base_metrics = baseline_entry.get("metrics", {})
+        champ_metrics = champion_entry.get("metrics", {})
+
+        base_auc = float(base_metrics.get("oof_roc_auc", 0.0))
+        champ_auc = float(champ_metrics.get("oof_roc_auc", 0.0))
+        base_pr = float(base_metrics.get("oof_pr_auc", 0.0))
+        champ_pr = float(champ_metrics.get("oof_pr_auc", 0.0))
+        base_loss = float(base_metrics.get("oof_log_loss", 0.0))
+        champ_loss = float(champ_metrics.get("oof_log_loss", 0.0))
+        base_omega = float(base_metrics.get("overfitting_index", 0.0))
+        champ_omega = float(champ_metrics.get("overfitting_index", 0.0))
+
+        # Parameter correlations / sensitivities with ROC-AUC
+        sensitivities = {}
+        for param in ["depth", "learning_rate", "l2_leaf_reg", "iterations", "bagging_temperature"]:
+            vals = [ts[param] for ts in time_series]
+            aucs = [ts["oof_roc_auc"] for ts in time_series]
+            if len(set(vals)) > 1 and len(vals) >= 3:
+                try:
+                    corr = float(np.corrcoef(vals, aucs)[0, 1])
+                    sensitivities[param] = {
+                        "correlation_with_auc": round(corr, 3) if not np.isnan(corr) else 0.0,
+                        "unique_values_tested": sorted(list(set(vals))),
+                    }
+                except Exception:
+                    pass
+
+        summary_payload = {
+            "total_experiments": len(completed_entries),
+            "champion_experiment_id": champion_entry.get("experiment_id"),
+            "baseline_metrics": {
+                "oof_roc_auc": base_auc,
+                "oof_pr_auc": base_pr,
+                "oof_log_loss": base_loss,
+                "overfitting_index": base_omega,
+                "ece_score": float(base_metrics.get("ece_score", 0.0)),
+            },
+            "champion_metrics": {
+                "oof_roc_auc": champ_auc,
+                "oof_pr_auc": champ_pr,
+                "oof_log_loss": champ_loss,
+                "overfitting_index": champ_omega,
+                "ece_score": float(champ_metrics.get("ece_score", 0.0)),
+                "optimal_youden_threshold": float(champ_metrics.get("optimal_youden_threshold", 0.5)),
+            },
+            "net_improvements": {
+                "delta_roc_auc": round(champ_auc - base_auc, 5),
+                "pct_gain_roc_auc": round(((champ_auc - base_auc) / max(base_auc, 1e-6)) * 100.0, 2),
+                "delta_pr_auc": round(champ_pr - base_pr, 5),
+                "pct_gain_pr_auc": round(((champ_pr - base_pr) / max(base_pr, 1e-6)) * 100.0, 2),
+                "delta_log_loss": round(champ_loss - base_loss, 4),
+                "delta_overfitting_index": round(champ_omega - base_omega, 2),
+            },
+            "parameter_sensitivities": sensitivities,
+            "trajectory_time_series": time_series,
+            "curves_data": {
+                "baseline_roc_curve": base_metrics.get("roc_curve_points", []),
+                "champion_roc_curve": champ_metrics.get("roc_curve_points", []),
+                "baseline_pr_curve": base_metrics.get("pr_curve_points", []),
+                "champion_pr_curve": champ_metrics.get("pr_curve_points", []),
+                "baseline_calibration_curve": base_metrics.get("calibration_curve_points", []),
+                "champion_calibration_curve": champ_metrics.get("calibration_curve_points", []),
+                "champion_probability_histogram": champ_metrics.get("probability_histogram", []),
+                "champion_feature_importances": champ_metrics.get("feature_importances", {}),
+            },
+        }
+
+        with open(summary_path, "w", encoding="utf-8") as f:
+            json.dump(summary_payload, f, indent=2)
+        logger.info("Saved visualizable trajectory summary to %s", summary_path)
+        return summary_path

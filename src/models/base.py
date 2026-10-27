@@ -45,6 +45,12 @@ class ExperimentTelemetry:
     f1_at_optimal: float = 0.0
     matthews_corrcoef: float = 0.0
 
+    # Curve points for visualization (ROC, PR, Calibration, Histogram)
+    roc_curve_points: List[Dict[str, float]] = field(default_factory=list)
+    pr_curve_points: List[Dict[str, float]] = field(default_factory=list)
+    calibration_curve_points: List[Dict[str, float]] = field(default_factory=list)
+    probability_histogram: List[Dict[str, Any]] = field(default_factory=list)
+
     # Error analysis & confusion matrices
     confusion_matrix_05: List[List[int]] = field(default_factory=list)
     confusion_matrix_optimal: List[List[int]] = field(default_factory=list)
