@@ -60,6 +60,22 @@ class ExperimentTelemetry:
     # Hardware & performance profiling
     training_duration_seconds: float = 0.0
     device_used: str = "CPU"
+    throughput_samples_per_sec: float = 0.0
+    inference_latency_ms: float = 0.0
+    fold_cv_roc_auc: float = 0.0
+
+    # Multi-threshold decision & business spectrum
+    threshold_sweep: List[Dict[str, Any]] = field(default_factory=list)
+
+    # Decile cumulative gains & lift analysis
+    lift_and_gain_curve: List[Dict[str, Any]] = field(default_factory=list)
+
+    # Prediction probability distribution moments & separation
+    distribution_stats: Dict[str, Any] = field(default_factory=dict)
+    separation_margin: float = 0.0
+
+    # Subgroup & cohort slice diagnostics
+    cohort_slice_metrics: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
 
 
 class BaseModel(ABC):

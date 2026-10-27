@@ -130,3 +130,56 @@ def test_trajectory_summary_and_dashboard_generation(tmp_path: Path):
     res_dash = generate_interactive_dashboard(summary_path=summary_file, output_html=dash_html)
     assert res_dash.exists()
     assert dash_html.stat().st_size > 500
+
+
+def test_threshold_sweep_calculation():
+    y_true = np.array([0, 0, 0, 0, 1, 1, 1, 1])
+    y_prob = np.array([0.1, 0.2, 0.3, 0.4, 0.6, 0.7, 0.8, 0.9])
+    sweep = ExtensiveTelemetryCollector.compute_threshold_sweep(y_true, y_prob)
+
+    assert len(sweep) == 9
+    assert sweep[0]["threshold"] == 0.1
+    assert sweep[-1]["threshold"] == 0.9
+    for item in sweep:
+        assert 0.0 <= item["precision"] <= 1.0
+        assert 0.0 <= item["recall"] <= 1.0
+        assert 0.0 <= item["f1_score"] <= 1.0
+        assert 0.0 <= item["churn_intervention_rate"] <= 1.0
+
+
+def test_prediction_distribution_moments_and_separation():
+    y_true = np.array([0, 0, 0, 0, 1, 1, 1, 1])
+    y_prob = np.array([0.1, 0.2, 0.3, 0.4, 0.6, 0.7, 0.8, 0.9])
+    stats = ExtensiveTelemetryCollector.compute_prediction_distribution_stats(y_true, y_prob)
+
+    assert stats["separation_margin"] > 0.0
+    assert stats["churn_class_mean"] > stats["non_churn_class_mean"]
+    assert len(stats["quantiles_p10_p25_p50_p75_p90"]) == 5
+
+
+def test_lift_and_gain_curve_calculation():
+    y_true = np.array([0, 0, 0, 0, 1, 1, 1, 1, 0, 1])
+    y_prob = np.array([0.1, 0.2, 0.3, 0.4, 0.6, 0.7, 0.8, 0.9, 0.15, 0.85])
+    gain_curve = ExtensiveTelemetryCollector.compute_lift_and_gain_curve(y_true, y_prob, n_bins=5)
+
+    assert len(gain_curve) == 5
+    assert gain_curve[0]["decile"] == 1
+    assert gain_curve[-1]["cumulative_gain_pct"] == 100.0
+
+
+def test_cohort_slice_metrics():
+    import pandas as pd
+    df = pd.DataFrame({
+        "Contract": ["Month-to-month"] * 5 + ["One year"] * 5,
+        "InternetService": ["Fiber optic"] * 6 + ["DSL"] * 4,
+    })
+    y_true = np.array([1, 1, 1, 0, 0, 0, 0, 0, 1, 0])
+    y_prob = np.array([0.8, 0.75, 0.9, 0.4, 0.3, 0.2, 0.1, 0.15, 0.6, 0.25])
+
+    slices = ExtensiveTelemetryCollector.compute_cohort_slice_metrics(df, y_true, y_prob)
+    assert "Contract" in slices
+    assert "InternetService" in slices
+    assert len(slices["Contract"]) == 2
+    for seg in slices["Contract"]:
+        assert seg["sample_count"] == 5
+        assert 0.0 <= seg["actual_churn_rate"] <= 1.0

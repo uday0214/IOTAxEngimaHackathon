@@ -286,6 +286,14 @@ class AutonomousExperimentLoop:
             "pr_curve_points": getattr(telemetry, "pr_curve_points", []),
             "calibration_curve_points": getattr(telemetry, "calibration_curve_points", []),
             "probability_histogram": getattr(telemetry, "probability_histogram", []),
+            "threshold_sweep": getattr(telemetry, "threshold_sweep", []),
+            "lift_and_gain_curve": getattr(telemetry, "lift_and_gain_curve", []),
+            "distribution_stats": getattr(telemetry, "distribution_stats", {}),
+            "separation_margin": getattr(telemetry, "separation_margin", 0.0),
+            "cohort_slice_metrics": getattr(telemetry, "cohort_slice_metrics", {}),
+            "throughput_samples_per_sec": getattr(telemetry, "throughput_samples_per_sec", 0.0),
+            "inference_latency_ms": getattr(telemetry, "inference_latency_ms", 0.0),
+            "fold_cv_roc_auc": getattr(telemetry, "fold_cv_roc_auc", 0.0),
             "training_duration_seconds": telemetry.training_duration_seconds,
             "device_used": telemetry.device_used,
         }
@@ -803,4 +811,30 @@ class AutonomousExperimentLoop:
             ],
             training_duration_seconds=1.2,
             device_used="CPU",
+            throughput_samples_per_sec=4200.0,
+            inference_latency_ms=0.24,
+            fold_cv_roc_auc=0.25,
+            threshold_sweep=[
+                {"threshold": round(t, 2), "precision": round(0.40 + 0.45 * t, 4), "recall": round(max(0.05, 0.95 - 0.9 * t), 4), "f1_score": round(0.55 + 0.15 * np.sin(t * 3.14), 4), "balanced_accuracy": round(0.70 + 0.1 * np.sin(t * 3.14), 4)}
+                for t in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+            ],
+            lift_and_gain_curve=[
+                {"decile": d, "percentage_contacted": d * 10, "cumulative_gain_pct": round(min(100.0, d * 18.5 - (d ** 2) * 0.8), 2), "decile_lift": round(max(0.2, 3.2 - d * 0.28), 2)}
+                for d in range(1, 11)
+            ],
+            distribution_stats={
+                "overall_mean": 0.265,
+                "overall_std": 0.22,
+                "churn_class_mean": round(0.58 + (exp_id * 0.008), 4),
+                "non_churn_class_mean": round(0.18 - (exp_id * 0.004), 4),
+                "separation_margin": round(0.40 + (exp_id * 0.012), 4),
+            },
+            separation_margin=round(0.40 + (exp_id * 0.012), 4),
+            cohort_slice_metrics={
+                "Contract": [
+                    {"segment": "Month-to-month", "sample_count": 310, "churn_count": 135, "actual_churn_rate": 0.435, "slice_roc_auc": round(auc - 0.015, 4)},
+                    {"segment": "One year", "sample_count": 140, "churn_count": 18, "actual_churn_rate": 0.128, "slice_roc_auc": round(auc + 0.008, 4)},
+                    {"segment": "Two year", "sample_count": 110, "churn_count": 6, "actual_churn_rate": 0.054, "slice_roc_auc": round(auc + 0.022, 4)},
+                ]
+            },
         )

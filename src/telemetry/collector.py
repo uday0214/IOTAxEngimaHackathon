@@ -66,13 +66,193 @@ class ExtensiveTelemetryCollector:
 
         return best_t
 
+    @staticmethod
+    def compute_threshold_sweep(
+        y_true: np.ndarray,
+        y_prob: np.ndarray,
+        thresholds: Optional[List[float]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Calculates confusion matrices, precision, recall, F1, and intervention rate across a range of thresholds."""
+        if thresholds is None:
+            thresholds = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+
+        total = len(y_true)
+        sweep = []
+        for t in thresholds:
+            pred = (y_prob >= t).astype(int)
+            tp = int(np.sum((pred == 1) & (y_true == 1)))
+            fp = int(np.sum((pred == 1) & (y_true == 0)))
+            fn = int(np.sum((pred == 0) & (y_true == 1)))
+            tn = int(np.sum((pred == 0) & (y_true == 0)))
+
+            prec = float(tp / max(tp + fp, 1))
+            rec = float(tp / max(tp + fn, 1))
+            spec = float(tn / max(tn + fp, 1))
+            f1 = float(2 * (prec * rec) / max(prec + rec, 1e-6))
+            bal_acc = float((rec + spec) / 2.0)
+            intervention_rate = float((tp + fp) / max(total, 1))
+            acc = float((tp + tn) / max(total, 1))
+
+            sweep.append({
+                "threshold": round(float(t), 2),
+                "true_positives": tp,
+                "false_positives": fp,
+                "false_negatives": fn,
+                "true_negatives": tn,
+                "precision": round(prec, 4),
+                "recall": round(rec, 4),
+                "specificity": round(spec, 4),
+                "f1_score": round(f1, 4),
+                "balanced_accuracy": round(bal_acc, 4),
+                "churn_intervention_rate": round(intervention_rate, 4),
+                "accuracy": round(acc, 4),
+            })
+        return sweep
+
+    @staticmethod
+    def compute_prediction_distribution_stats(y_true: np.ndarray, y_prob: np.ndarray) -> Dict[str, Any]:
+        """Calculates statistical moments and separation margin between churn and non-churn distributions."""
+        mean_prob = float(np.mean(y_prob))
+        std_prob = float(np.std(y_prob))
+
+        churn_mask = (y_true == 1)
+        non_churn_mask = (y_true == 0)
+
+        churn_mean = float(np.mean(y_prob[churn_mask])) if np.sum(churn_mask) > 0 else 0.0
+        non_churn_mean = float(np.mean(y_prob[non_churn_mask])) if np.sum(non_churn_mask) > 0 else 0.0
+        separation_margin = churn_mean - non_churn_mean
+
+        churn_median = float(np.median(y_prob[churn_mask])) if np.sum(churn_mask) > 0 else 0.0
+        non_churn_median = float(np.median(y_prob[non_churn_mask])) if np.sum(non_churn_mask) > 0 else 0.0
+
+        quantiles = [float(q) for q in np.quantile(y_prob, [0.1, 0.25, 0.5, 0.75, 0.9])]
+
+        return {
+            "overall_mean": round(mean_prob, 4),
+            "overall_std": round(std_prob, 4),
+            "churn_class_mean": round(churn_mean, 4),
+            "non_churn_class_mean": round(non_churn_mean, 4),
+            "churn_class_median": round(churn_median, 4),
+            "non_churn_class_median": round(non_churn_median, 4),
+            "separation_margin": round(separation_margin, 4),
+            "quantiles_p10_p25_p50_p75_p90": [round(q, 4) for q in quantiles],
+        }
+
+    @staticmethod
+    def compute_lift_and_gain_curve(y_true: np.ndarray, y_prob: np.ndarray, n_bins: int = 10) -> List[Dict[str, Any]]:
+        """Calculates decile cumulative gains and lift analysis for targeting efficiency."""
+        total_samples = len(y_true)
+        total_churners = int(np.sum(y_true == 1))
+        if total_churners == 0 or total_samples == 0:
+            return []
+
+        overall_churn_rate = total_churners / total_samples
+        sorted_indices = np.argsort(y_prob)[::-1]
+        sorted_true = y_true[sorted_indices]
+
+        bin_size = total_samples / n_bins
+        gain_points = []
+        cumulative_churners = 0
+
+        for b in range(1, n_bins + 1):
+            end_idx = int(round(b * bin_size))
+            start_idx = int(round((b - 1) * bin_size))
+            bin_true = sorted_true[start_idx:end_idx]
+
+            bin_churners = int(np.sum(bin_true == 1))
+            cumulative_churners += bin_churners
+
+            pct_contacted = b / n_bins
+            cumulative_gain = cumulative_churners / total_churners
+            bin_churn_rate = bin_churners / max(len(bin_true), 1)
+            decile_lift = bin_churn_rate / max(overall_churn_rate, 1e-6)
+            cumulative_lift = cumulative_gain / max(pct_contacted, 1e-6)
+
+            gain_points.append({
+                "decile": b,
+                "percentage_contacted": round(pct_contacted * 100, 1),
+                "decile_churners": bin_churners,
+                "cumulative_churners": cumulative_churners,
+                "cumulative_gain_pct": round(cumulative_gain * 100, 2),
+                "decile_lift": round(decile_lift, 2),
+                "cumulative_lift": round(cumulative_lift, 2),
+            })
+        return gain_points
+
+    @staticmethod
+    def compute_cohort_slice_metrics(
+        df: Optional[pd.DataFrame],
+        y_true: np.ndarray,
+        y_prob: np.ndarray,
+        slice_cols: Optional[List[str]] = None,
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """Calculates slice-level diagnostics across key customer segments."""
+        if df is None:
+            return {}
+
+        if slice_cols is None:
+            slice_cols = ["Contract", "InternetService", "PaymentMethod", "PaperlessBilling", "gender"]
+
+        available_cols = [c for c in slice_cols if c in df.columns]
+        if not available_cols:
+            return {}
+
+        slice_results = {}
+        for col in available_cols:
+            col_series = df[col].astype(str)
+            categories = col_series.unique()
+            cat_metrics = []
+
+            for cat in categories:
+                mask = (col_series == cat).to_numpy()
+                count = int(np.sum(mask))
+                if count < 5:
+                    continue
+
+                sub_true = y_true[mask]
+                sub_prob = y_prob[mask]
+
+                churn_count = int(np.sum(sub_true == 1))
+                churn_rate = churn_count / count
+                mean_p = float(np.mean(sub_prob))
+
+                # Slice ROC-AUC if both classes present in slice
+                slice_auc = None
+                if len(np.unique(sub_true)) > 1:
+                    try:
+                        slice_auc = round(float(roc_auc_score(sub_true, sub_prob)), 4)
+                    except Exception:
+                        pass
+
+                # False negative rate in slice at 0.5 threshold
+                pred_05 = (sub_prob >= 0.5).astype(int)
+                tp = np.sum((pred_05 == 1) & (sub_true == 1))
+                fn = np.sum((pred_05 == 0) & (sub_true == 1))
+                fnr = round(float(fn / max(fn + tp, 1)), 4)
+
+                cat_metrics.append({
+                    "segment": str(cat),
+                    "sample_count": count,
+                    "churn_count": churn_count,
+                    "actual_churn_rate": round(churn_rate, 4),
+                    "model_mean_prob": round(mean_p, 4),
+                    "slice_roc_auc": slice_auc,
+                    "slice_fnr_05": fnr,
+                })
+
+            cat_metrics.sort(key=lambda x: x["sample_count"], reverse=True)
+            slice_results[col] = cat_metrics
+
+        return slice_results
+
     @classmethod
     def compute_classification_diagnostics(
         cls,
         y_true: np.ndarray,
         y_prob: np.ndarray,
+        X_df: Optional[pd.DataFrame] = None,
     ) -> Dict[str, Any]:
-        """Calculates rich error analysis, calibration, and classification statistics."""
+        """Calculates rich error analysis, calibration, distribution moments, and classification statistics."""
         oof_roc_auc = float(roc_auc_score(y_true, y_prob))
         oof_pr_auc = float(average_precision_score(y_true, y_prob))
         oof_logloss = float(log_loss(y_true, y_prob))
@@ -163,6 +343,12 @@ class ExtensiveTelemetryCollector:
         except Exception:
             pass
 
+        # 5. Advanced Process Metrics: Threshold sweep, distribution moments, decile gains, and cohort slices
+        threshold_sweep = cls.compute_threshold_sweep(y_true, y_prob)
+        dist_stats = cls.compute_prediction_distribution_stats(y_true, y_prob)
+        gain_curve = cls.compute_lift_and_gain_curve(y_true, y_prob)
+        cohort_slices = cls.compute_cohort_slice_metrics(X_df, y_true, y_prob)
+
         return {
             "oof_roc_auc": oof_roc_auc,
             "oof_pr_auc": oof_pr_auc,
@@ -182,6 +368,11 @@ class ExtensiveTelemetryCollector:
             "pr_curve_points": pr_pts,
             "calibration_curve_points": calib_pts,
             "probability_histogram": prob_hist,
+            "threshold_sweep": threshold_sweep,
+            "distribution_stats": dist_stats,
+            "separation_margin": dist_stats.get("separation_margin", 0.0),
+            "lift_and_gain_curve": gain_curve,
+            "cohort_slice_metrics": cohort_slices,
         }
 
     @staticmethod
@@ -277,6 +468,9 @@ class ExtensiveTelemetryCollector:
                 "generalization_gap": float(metrics.get("generalization_gap", 0.0)),
                 "ece_score": float(metrics.get("ece_score", 0.0)),
                 "optimal_youden_threshold": float(metrics.get("optimal_youden_threshold", 0.5)),
+                "separation_margin": float(metrics.get("separation_margin", 0.0)),
+                "throughput_samples_per_sec": float(metrics.get("throughput_samples_per_sec", 0.0)),
+                "inference_latency_ms": float(metrics.get("inference_latency_ms", 0.0)),
                 "depth": int(hyp.get("depth", 6)),
                 "learning_rate": float(hyp.get("learning_rate", 0.05)),
                 "l2_leaf_reg": float(hyp.get("l2_leaf_reg", 3.0)),
@@ -301,62 +495,60 @@ class ExtensiveTelemetryCollector:
         base_omega = float(base_metrics.get("overfitting_index", 0.0))
         champ_omega = float(champ_metrics.get("overfitting_index", 0.0))
 
-        # Parameter correlations / sensitivities with ROC-AUC
-        sensitivities = {}
-        for param in ["depth", "learning_rate", "l2_leaf_reg", "iterations", "bagging_temperature"]:
-            vals = [ts[param] for ts in time_series]
-            aucs = [ts["oof_roc_auc"] for ts in time_series]
-            if len(set(vals)) > 1 and len(vals) >= 3:
-                try:
-                    corr = float(np.corrcoef(vals, aucs)[0, 1])
-                    sensitivities[param] = {
-                        "correlation_with_auc": round(corr, 3) if not np.isnan(corr) else 0.0,
-                        "unique_values_tested": sorted(list(set(vals))),
-                    }
-                except Exception:
-                    pass
+        delta_auc = champ_auc - base_auc
+        delta_pr = champ_pr - base_pr
+        delta_loss = champ_loss - base_loss
+        delta_omega = champ_omega - base_omega
+
+        curves_data = {
+            "champion_experiment_id": champion_entry.get("experiment_id", 1),
+            "champion_family": champion_entry.get("hyperparameters", {}).get("model_family", "catboost"),
+            "roc_curve": champ_metrics.get("roc_curve_points", []),
+            "pr_curve": champ_metrics.get("pr_curve_points", []),
+            "calibration_curve": champ_metrics.get("calibration_curve_points", []),
+            "probability_histogram": champ_metrics.get("probability_histogram", []),
+            "threshold_sweep": champ_metrics.get("threshold_sweep", []),
+            "lift_and_gain_curve": champ_metrics.get("lift_and_gain_curve", []),
+            "distribution_stats": champ_metrics.get("distribution_stats", {}),
+            "cohort_slice_metrics": champ_metrics.get("cohort_slice_metrics", {}),
+        }
 
         summary_payload = {
             "total_experiments": len(completed_entries),
-            "champion_experiment_id": champion_entry.get("experiment_id"),
-            "baseline_metrics": {
-                "oof_roc_auc": base_auc,
-                "oof_pr_auc": base_pr,
-                "oof_log_loss": base_loss,
-                "overfitting_index": base_omega,
-                "ece_score": float(base_metrics.get("ece_score", 0.0)),
-            },
+            "champion_experiment_id": champion_entry.get("experiment_id", 1),
             "champion_metrics": {
+                "experiment_id": champion_entry.get("experiment_id", 1),
+                "model_family": champion_entry.get("hyperparameters", {}).get("model_family", "catboost"),
                 "oof_roc_auc": champ_auc,
                 "oof_pr_auc": champ_pr,
                 "oof_log_loss": champ_loss,
                 "overfitting_index": champ_omega,
                 "ece_score": float(champ_metrics.get("ece_score", 0.0)),
                 "optimal_youden_threshold": float(champ_metrics.get("optimal_youden_threshold", 0.5)),
+                "separation_margin": float(champ_metrics.get("separation_margin", 0.0)),
+            },
+            "baseline_metrics": {
+                "experiment_id": baseline_entry.get("experiment_id", 1),
+                "model_family": baseline_entry.get("hyperparameters", {}).get("model_family", "catboost"),
+                "oof_roc_auc": base_auc,
+                "oof_pr_auc": base_pr,
+                "oof_log_loss": base_loss,
+                "overfitting_index": base_omega,
             },
             "net_improvements": {
-                "delta_roc_auc": round(champ_auc - base_auc, 5),
-                "pct_gain_roc_auc": round(((champ_auc - base_auc) / max(base_auc, 1e-6)) * 100.0, 2),
-                "delta_pr_auc": round(champ_pr - base_pr, 5),
-                "pct_gain_pr_auc": round(((champ_pr - base_pr) / max(base_pr, 1e-6)) * 100.0, 2),
-                "delta_log_loss": round(champ_loss - base_loss, 4),
-                "delta_overfitting_index": round(champ_omega - base_omega, 2),
+                "delta_roc_auc": round(delta_auc, 5),
+                "pct_gain_roc_auc": round((delta_auc / max(base_auc, 1e-6)) * 100, 2),
+                "delta_pr_auc": round(delta_pr, 5),
+                "pct_gain_pr_auc": round((delta_pr / max(base_pr, 1e-6)) * 100, 2),
+                "delta_log_loss": round(delta_loss, 4),
+                "delta_overfitting_index": round(delta_omega, 2),
             },
-            "parameter_sensitivities": sensitivities,
             "trajectory_time_series": time_series,
-            "curves_data": {
-                "baseline_roc_curve": base_metrics.get("roc_curve_points", []),
-                "champion_roc_curve": champ_metrics.get("roc_curve_points", []),
-                "baseline_pr_curve": base_metrics.get("pr_curve_points", []),
-                "champion_pr_curve": champ_metrics.get("pr_curve_points", []),
-                "baseline_calibration_curve": base_metrics.get("calibration_curve_points", []),
-                "champion_calibration_curve": champ_metrics.get("calibration_curve_points", []),
-                "champion_probability_histogram": champ_metrics.get("probability_histogram", []),
-                "champion_feature_importances": champ_metrics.get("feature_importances", {}),
-            },
+            "curves_data": curves_data,
         }
 
         with open(summary_path, "w", encoding="utf-8") as f:
             json.dump(summary_payload, f, indent=2)
+
         logger.info("Saved visualizable trajectory summary to %s", summary_path)
         return summary_path
