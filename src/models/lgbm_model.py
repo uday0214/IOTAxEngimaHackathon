@@ -2,6 +2,7 @@
 
 import time
 import logging
+import warnings
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 import joblib
@@ -69,9 +70,8 @@ class LightGBMPipelineModel(BaseModel):
         if class_weight:
             params["class_weight"] = class_weight
 
-        # Device mapping: LightGBM uses 'cpu' or 'gpu'
-        if self.device == "GPU":
-            params["device_type"] = "gpu"
+        # LightGBM uses multi-threaded CPU for optimal tabular speed without OpenCL JIT compiler noise
+        params["device_type"] = "cpu"
 
         return LGBMClassifier(**params)
 
@@ -106,7 +106,9 @@ class LightGBMPipelineModel(BaseModel):
                 log_evaluation(period=0),
             ]
 
-            try:
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=UserWarning)
+                warnings.filterwarnings("ignore", category=FutureWarning)
                 model.fit(
                     X_tr,
                     y_tr,
@@ -114,23 +116,10 @@ class LightGBMPipelineModel(BaseModel):
                     eval_names=["train", "val"],
                     callbacks=callbacks,
                 )
-            except Exception as e:
-                # Fallback to CPU if GPU initialization failed
-                if self.device == "GPU":
-                    logger.warning("LightGBM GPU training failed on fold %d (%s). Falling back to CPU.", fold, e)
-                    self.device = "CPU"
-                    model = self._build_classifier(random_seed=random_state + fold)
-                    model.fit(
-                        X_tr,
-                        y_tr,
-                        eval_set=[(X_tr, y_tr), (X_va, y_val)],
-                        eval_names=["train", "val"],
-                        callbacks=callbacks,
-                    )
-                else:
-                    raise e
 
-            val_probs = model.predict_proba(X_va)[:, 1]
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=UserWarning)
+                val_probs = model.predict_proba(X_va)[:, 1]
             oof_probs[val_idx] = val_probs
 
             fold_auc = float(roc_auc_score(y_val, val_probs))
@@ -243,7 +232,10 @@ class LightGBMPipelineModel(BaseModel):
         """Fits final champion model on full dataset."""
         X_proc = self._prepare_dataframe(X)
         model = self._build_classifier(random_seed=random_seed)
-        model.fit(X_proc, y)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=UserWarning)
+            warnings.filterwarnings("ignore", category=FutureWarning)
+            model.fit(X_proc, y)
         self.champion_model = model
         return model
 
@@ -252,7 +244,10 @@ class LightGBMPipelineModel(BaseModel):
         if not self.champion_model:
             raise RuntimeError("Champion model is not fitted or loaded yet.")
         X_proc = self._prepare_dataframe(X)
-        return self.champion_model.predict_proba(X_proc)[:, 1]
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=UserWarning)
+            warnings.filterwarnings("ignore", category=FutureWarning)
+            return self.champion_model.predict_proba(X_proc)[:, 1]
 
     def save_model(self, path: Path) -> Path:
         """Saves champion model to disk via joblib."""

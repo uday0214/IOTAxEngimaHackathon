@@ -2,6 +2,7 @@
 
 import time
 import logging
+import warnings
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Tuple
 import joblib
@@ -214,7 +215,10 @@ class RandomForestPipelineModel(BaseModel):
     def fit_final(self, X: pd.DataFrame, y: pd.Series, random_seed: int = 42) -> Pipeline:
         """Fits final champion pipeline on full dataset."""
         pipeline = self._build_pipeline(X, random_seed=random_seed)
-        pipeline.fit(X, y)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=FutureWarning)
+            warnings.filterwarnings("ignore", category=UserWarning)
+            pipeline.fit(X, y)
         self.champion_model = pipeline
         return pipeline
 
@@ -222,7 +226,10 @@ class RandomForestPipelineModel(BaseModel):
         """Predicts churn probabilities using the fitted pipeline."""
         if not self.champion_model:
             raise RuntimeError("Champion model is not fitted or loaded yet.")
-        return self.champion_model.predict_proba(X)[:, 1]
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=FutureWarning)
+            warnings.filterwarnings("ignore", category=UserWarning)
+            return self.champion_model.predict_proba(X)[:, 1]
 
     def save_model(self, path: Path) -> Path:
         """Saves champion pipeline to disk via joblib."""
@@ -268,14 +275,18 @@ class LogisticRegressionPipelineModel(BaseModel):
         solver = getattr(self.config, "solver", "lbfgs") or "lbfgs"
         class_weight = "balanced" if self.config.class_weight_mode in ("Balanced", "SqrtBalanced") else None
 
-        lr = LogisticRegression(
-            C=c_val,
-            penalty=penalty,
-            solver=solver,
-            max_iter=1000,
-            class_weight=class_weight,
-            random_state=random_seed,
-        )
+        lr_kwargs: Dict[str, Any] = {
+            "C": c_val,
+            "solver": solver,
+            "max_iter": 1000,
+            "random_state": random_seed,
+        }
+        if class_weight:
+            lr_kwargs["class_weight"] = class_weight
+        if penalty and penalty != "l2":
+            lr_kwargs["penalty"] = penalty
+
+        lr = LogisticRegression(**lr_kwargs)
         return Pipeline(steps=[("preprocessor", preprocessor), ("classifier", lr)])
 
     def cross_validate(
@@ -298,9 +309,15 @@ class LogisticRegressionPipelineModel(BaseModel):
             X_va, y_val = X.iloc[val_idx], y.iloc[val_idx]
 
             pipeline = self._build_pipeline(X_tr, random_seed=random_state + fold)
-            pipeline.fit(X_tr, y_tr)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=FutureWarning)
+                warnings.filterwarnings("ignore", category=UserWarning)
+                pipeline.fit(X_tr, y_tr)
 
-            val_probs = pipeline.predict_proba(X_va)[:, 1]
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=FutureWarning)
+                warnings.filterwarnings("ignore", category=UserWarning)
+                val_probs = pipeline.predict_proba(X_va)[:, 1]
             oof_probs[val_idx] = val_probs
 
             fold_auc = float(roc_auc_score(y_val, val_probs))
@@ -398,7 +415,10 @@ class LogisticRegressionPipelineModel(BaseModel):
     def fit_final(self, X: pd.DataFrame, y: pd.Series, random_seed: int = 42) -> Pipeline:
         """Fits final champion pipeline on full dataset."""
         pipeline = self._build_pipeline(X, random_seed=random_seed)
-        pipeline.fit(X, y)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=FutureWarning)
+            warnings.filterwarnings("ignore", category=UserWarning)
+            pipeline.fit(X, y)
         self.champion_model = pipeline
         return pipeline
 
@@ -406,7 +426,10 @@ class LogisticRegressionPipelineModel(BaseModel):
         """Predicts churn probabilities using the fitted pipeline."""
         if not self.champion_model:
             raise RuntimeError("Champion model is not fitted or loaded yet.")
-        return self.champion_model.predict_proba(X)[:, 1]
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=FutureWarning)
+            warnings.filterwarnings("ignore", category=UserWarning)
+            return self.champion_model.predict_proba(X)[:, 1]
 
     def save_model(self, path: Path) -> Path:
         """Saves champion pipeline to disk via joblib."""

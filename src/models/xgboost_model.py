@@ -2,6 +2,7 @@
 
 import time
 import logging
+import warnings
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 import joblib
@@ -105,27 +106,33 @@ class XGBoostPipelineModel(BaseModel):
             model = self._build_classifier(random_seed=random_state + fold, with_early_stopping=True)
 
             try:
-                model.fit(
-                    X_tr,
-                    y_tr,
-                    eval_set=[(X_tr, y_tr), (X_va, y_val)],
-                    verbose=False,
-                )
-            except Exception as e:
-                if self.device == "GPU":
-                    logger.warning("XGBoost GPU fit failed on fold %d (%s). Falling back to CPU.", fold, e)
-                    self.device = "CPU"
-                    model = self._build_classifier(random_seed=random_state + fold, with_early_stopping=True)
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", category=UserWarning)
                     model.fit(
                         X_tr,
                         y_tr,
                         eval_set=[(X_tr, y_tr), (X_va, y_val)],
                         verbose=False,
                     )
+            except Exception as e:
+                if self.device == "GPU":
+                    logger.warning("XGBoost GPU fit failed on fold %d (%s). Falling back to CPU.", fold, e)
+                    self.device = "CPU"
+                    model = self._build_classifier(random_seed=random_state + fold, with_early_stopping=True)
+                    with warnings.catch_warnings():
+                        warnings.filterwarnings("ignore", category=UserWarning)
+                        model.fit(
+                            X_tr,
+                            y_tr,
+                            eval_set=[(X_tr, y_tr), (X_va, y_val)],
+                            verbose=False,
+                        )
                 else:
                     raise e
 
-            val_probs = model.predict_proba(X_va)[:, 1]
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=UserWarning)
+                val_probs = model.predict_proba(X_va)[:, 1]
             oof_probs[val_idx] = val_probs
 
             fold_auc = float(roc_auc_score(y_val, val_probs))
@@ -238,7 +245,9 @@ class XGBoostPipelineModel(BaseModel):
         """Fits final champion model on full dataset."""
         X_proc = self._prepare_dataframe(X)
         model = self._build_classifier(random_seed=random_seed, with_early_stopping=False)
-        model.fit(X_proc, y, verbose=False)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=UserWarning)
+            model.fit(X_proc, y, verbose=False)
         self.champion_model = model
         return model
 
@@ -247,7 +256,9 @@ class XGBoostPipelineModel(BaseModel):
         if not self.champion_model:
             raise RuntimeError("Champion model is not fitted or loaded yet.")
         X_proc = self._prepare_dataframe(X)
-        return self.champion_model.predict_proba(X_proc)[:, 1]
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=UserWarning)
+            return self.champion_model.predict_proba(X_proc)[:, 1]
 
     def save_model(self, path: Path) -> Path:
         """Saves champion model to disk via joblib."""

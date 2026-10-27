@@ -425,36 +425,49 @@ class AutonomousExperimentLoop:
 
             # If more experiments remain, pipe telemetry to Math Engine & Gemini Supervisor for next cycle
             if exp_id < self.max_runs:
-                best_run = self.ledger.get_best_run()
-                best_auc = best_run["metrics"]["oof_roc_auc"] if best_run else run_result["metrics"]["oof_roc_auc"]
+                if tournament_k > 0 and exp_id < tournament_k:
+                    # Tournament Exploration Phase: Next run is the next candidate family
+                    next_family = self.tournament_candidates[exp_id]
+                    current_decision = get_tournament_baseline_decision(exp_id + 1, next_family)
+                    logger.info(
+                        "Tournament Phase: Next scheduled candidate is '%s' (Experiment %d of %d).",
+                        next_family.upper(),
+                        exp_id + 1,
+                        self.max_runs,
+                    )
+                else:
+                    # Post-tournament exploitation phase or standard loop: Consult Math Engine & Supervisor LLM
+                    best_run = self.ledger.get_best_run()
+                    best_auc = best_run["metrics"]["oof_roc_auc"] if best_run else run_result["metrics"]["oof_roc_auc"]
 
-                # 1. Mathematical Diagnostics on Extensive Telemetry
-                diagnosis = self.math_engine.analyze(
-                    current_telemetry=run_result["metrics"],
-                    best_telemetry=best_run["metrics"] if best_run else None,
-                    ledger_history=completed_entries,
-                )
-                logger.info(
-                    "Math Diagnosis for Exp %d: Overfitting Index=%.2f%%, Rec=%s",
-                    exp_id, diagnosis.overfitting_index, diagnosis.recommended_action
-                )
+                    # 1. Mathematical Diagnostics on Extensive Telemetry
+                    diagnosis = self.math_engine.analyze(
+                        current_telemetry=run_result["metrics"],
+                        best_telemetry=best_run["metrics"] if best_run else None,
+                        ledger_history=completed_entries,
+                    )
+                    logger.info(
+                        "Math Diagnosis for Exp %d: Overfitting Index=%.2f%%, Rec=%s",
+                        exp_id, diagnosis.overfitting_index, diagnosis.recommended_action
+                    )
 
-                # 2. Build Structured Context Prompt with Extensive Process Data
-                prompt = self.prompt_builder.build_prompt(
-                    experiment_id=exp_id + 1,
-                    history=self.ledger.load_all_runs(),
-                    current_telemetry=run_result["metrics"],
-                    math_diagnosis=diagnosis,
-                    best_auc=best_auc,
-                )
+                    # 2. Build Structured Context Prompt with Extensive Process Data
+                    prompt = self.prompt_builder.build_prompt(
+                        experiment_id=exp_id + 1,
+                        history=self.ledger.load_all_runs(),
+                        current_telemetry=run_result["metrics"],
+                        math_diagnosis=diagnosis,
+                        best_auc=best_auc,
+                    )
 
-                # 3. Gemini Supervisor Query (Tuning Hyperparameters for next experiment)
-                logger.info("Consulting Gemini Supervisor for Experiment %d config...", exp_id + 1)
-                current_decision = self.llm_client.decide_next_experiment(prompt, experiment_id=exp_id + 1)
+                    # 3. Gemini Supervisor Query (Tuning Hyperparameters for next experiment)
+                    champion_label = (self.winning_family or "catboost").upper()
+                    logger.info("Consulting Gemini Supervisor for Experiment %d config (%s champion)...", exp_id + 1, champion_label)
+                    current_decision = self.llm_client.decide_next_experiment(prompt, experiment_id=exp_id + 1)
 
-                # If tournament winner is locked, enforce winning architecture for all remaining runs!
-                if self.winning_family:
-                    current_decision.hyperparameters.model_family = self.winning_family
+                    # If tournament winner is locked, enforce winning architecture for all remaining runs!
+                    if self.winning_family:
+                        current_decision.hyperparameters.model_family = self.winning_family
 
         best_overall = self.ledger.get_best_run()
         logger.info("=================================================================")

@@ -75,3 +75,12 @@ class OptunaSamplerBridge:
                 self.study.tell(trial_number, roc_auc)
         except Exception as e:
             logger.warning("Could not record trial %d in Optuna study: %s", trial_number, e)
+
+    def close(self) -> None:
+        """Closes the underlying RDB storage engine if applicable."""
+        storage = getattr(self.study, "_storage", None)
+        if storage is not None and hasattr(storage, "engine"):
+            try:
+                storage.engine.dispose()
+            except Exception:
+                pass

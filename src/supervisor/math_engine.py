@@ -74,14 +74,19 @@ class MathematicalInferenceEngine:
         if not best_fold_aucs or len(current_fold_aucs) != len(best_fold_aucs) or len(current_fold_aucs) < 3:
             return None
 
-        diffs = np.array(current_fold_aucs) - np.array(best_fold_aucs)
-        if np.all(diffs == 0):
+        diffs = np.array(current_fold_aucs, dtype=float) - np.array(best_fold_aucs, dtype=float)
+        if np.all(diffs == 0) or np.allclose(diffs, 0.0, atol=1e-7) or np.var(diffs) < 1e-12:
             return 1.0
 
         try:
-            # Paired two-tailed t-test
-            _, p_val = stats.ttest_rel(current_fold_aucs, best_fold_aucs)
-            return float(p_val)
+            import warnings
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=RuntimeWarning, message="Precision loss occurred in moment calculation")
+                # Paired two-tailed t-test
+                _, p_val = stats.ttest_rel(current_fold_aucs, best_fold_aucs)
+                if np.isnan(p_val):
+                    return 1.0
+                return float(p_val)
         except Exception:
             return None
 
