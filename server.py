@@ -48,14 +48,14 @@ class ExperimentDataManager:
 
         # 2. Holdout Evaluation
         self.holdout_data = {
-            "champion_experiment_id": 1,
+            "champion_experiment_id": 12,
             "holdout_samples": 1409,
             "holdout_roc_auc": 0.8443,
-            "holdout_pr_auc": 0.6604,
-            "holdout_log_loss": 0.4171,
-            "oof_roc_auc": 0.8505,
-            "oof_pr_auc": 0.6674,
-            "auc_delta": -0.0062
+            "holdout_pr_auc": 0.6628,
+            "holdout_log_loss": 0.4736,
+            "oof_roc_auc": 0.8506,
+            "oof_pr_auc": 0.6645,
+            "auc_delta": -0.0063
         }
         holdout_path = os.path.join(ARTIFACTS_DIR, "holdout_evaluation.json")
         if os.path.exists(holdout_path):
@@ -63,14 +63,14 @@ class ExperimentDataManager:
                 with open(holdout_path, "r", encoding="utf-8") as f:
                     raw_h = json.load(f)
                     self.holdout_data.update({
-                        "champion_experiment_id": raw_h.get("champion_experiment_id", 1),
+                        "champion_experiment_id": raw_h.get("champion_experiment_id", 12),
                         "holdout_samples": raw_h.get("holdout_samples", 1409),
                         "holdout_roc_auc": round(raw_h.get("holdout_roc_auc", 0.8443), 4),
-                        "holdout_pr_auc": round(raw_h.get("holdout_pr_auc", 0.6604), 4),
-                        "holdout_log_loss": round(raw_h.get("holdout_log_loss", 0.4171), 4),
-                        "oof_roc_auc": round(raw_h.get("oof_roc_auc", 0.8505), 4),
-                        "oof_pr_auc": round(raw_h.get("oof_pr_auc", 0.6674), 4),
-                        "auc_delta": round(raw_h.get("holdout_roc_auc", 0.8443) - raw_h.get("oof_roc_auc", 0.8505), 4)
+                        "holdout_pr_auc": round(raw_h.get("holdout_pr_auc", 0.6628), 4),
+                        "holdout_log_loss": round(raw_h.get("holdout_log_loss", 0.4736), 4),
+                        "oof_roc_auc": round(raw_h.get("oof_roc_auc", 0.8506), 4),
+                        "oof_pr_auc": round(raw_h.get("oof_pr_auc", 0.6645), 4),
+                        "auc_delta": round(raw_h.get("holdout_roc_auc", 0.8443) - raw_h.get("oof_roc_auc", 0.8506), 4)
                     })
             except Exception as e:
                 print(f"[Warning] Error loading holdout evaluation: {e}")
@@ -192,8 +192,8 @@ class ExperimentDataManager:
                     "val_roc_auc": champ["metrics"]["val_roc_auc"] if champ else 0.8505,
                     "val_pr_auc": champ["metrics"]["val_pr_auc"] if champ else 0.6674,
                     "holdout_roc_auc": self.holdout_data.get("holdout_roc_auc", 0.8443),
-                    "holdout_pr_auc": self.holdout_data.get("holdout_pr_auc", 0.6604),
-                    "optimal_threshold": 0.312
+                    "holdout_pr_auc": self.holdout_data.get("holdout_pr_auc", 0.6628),
+                    "optimal_threshold": 0.490
                 },
                 "holdout": self.holdout_data,
                 "dataset": self.dataset_info
@@ -215,7 +215,7 @@ class ExperimentDataManager:
         elif "holdout" in q or "test" in q:
             reply = "Holdout Verification: 1,409 unseen accounts evaluated with 0.8443 ROC-AUC, confirming minimal generalization drop."
         elif "threshold" in q or "decision" in q:
-            reply = "Decision Threshold: An operational cutoff of 0.312 captures 78% of departing subscribers with 51% precision."
+            reply = "Decision Threshold: An operational cutoff of 0.490 (Youden J*) captures 82.5% of departing subscribers with 51.6% precision."
         else:
             reply = f"Calibration Status: Evaluated {len(self.experiments)} multi-classifier runs. Leading configuration is Run #{c_id} ({c_model})."
 
