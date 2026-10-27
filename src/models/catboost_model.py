@@ -161,6 +161,7 @@ class CatBoostPipelineModel(BaseModel):
         diag = ExtensiveTelemetryCollector.compute_classification_diagnostics(
             y_true=y.to_numpy(),
             y_prob=oof_probs,
+            X_df=X,
         )
 
         # Average feature importances across folds
@@ -185,6 +186,11 @@ class CatBoostPipelineModel(BaseModel):
         gen_gap = final_va_loss - final_tr_loss
         overfit_idx = (gen_gap / max(final_va_loss, 1e-6)) * 100.0
 
+        throughput = len(X) / max(elapsed_time, 1e-4)
+        inf_lat_ms = (elapsed_time / max(len(X) * n_splits, 1)) * 1000.0
+        mean_auc = float(np.mean(fold_aucs)) if fold_aucs else 1.0
+        fold_cv = (float(np.std(fold_aucs)) / max(mean_auc, 1e-6)) * 100.0
+
         return ExperimentTelemetry(
             experiment_id=self.experiment_id,
             oof_roc_auc=diag["oof_roc_auc"],
@@ -194,6 +200,7 @@ class CatBoostPipelineModel(BaseModel):
             fold_roc_aucs=fold_aucs,
             fold_metrics=fold_metrics,
             fold_std_roc_auc=float(np.std(fold_aucs)),
+            fold_cv_roc_auc=round(fold_cv, 3),
             final_train_loss=final_tr_loss,
             final_val_loss=final_va_loss,
             generalization_gap=gen_gap,
@@ -222,6 +229,13 @@ class CatBoostPipelineModel(BaseModel):
             probability_histogram=diag.get("probability_histogram", []),
             training_duration_seconds=round(elapsed_time, 2),
             device_used=current_task_type,
+            throughput_samples_per_sec=round(throughput, 2),
+            inference_latency_ms=round(inf_lat_ms, 3),
+            threshold_sweep=diag.get("threshold_sweep", []),
+            lift_and_gain_curve=diag.get("lift_and_gain_curve", []),
+            distribution_stats=diag.get("distribution_stats", {}),
+            separation_margin=diag.get("separation_margin", 0.0),
+            cohort_slice_metrics=diag.get("cohort_slice_metrics", {}),
         )
 
     def fit_final(self, X: pd.DataFrame, y: pd.Series, random_seed: int = 42) -> CatBoostClassifier:

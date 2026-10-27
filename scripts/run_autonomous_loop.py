@@ -89,10 +89,22 @@ def main():
         action="store_true",
         help="Enable Google Colab environment integration (auto-mount Google Drive if available)",
     )
+    parser.add_argument(
+        "--tournament-models",
+        type=str,
+        default="catboost,lightgbm,xgboost,random_forest,logistic_regression",
+        help="Comma-separated list of candidate models for initial tournament exploration",
+    )
+    parser.add_argument(
+        "--no-tournament",
+        action="store_true",
+        help="Disable multi-model tournament phase and train CatBoost exclusively",
+    )
     args = parser.parse_args()
 
-    # Determine live execution flag
+    # Determine live execution flag and tournament candidates
     execute_live = False if args.simulate else True
+    tournament_candidates = None if args.no_tournament else [m.strip().lower() for m in args.tournament_models.split(",") if m.strip()]
 
     # Environmental Telemetry & Google Colab Integration
     sys_info = get_system_info()
@@ -111,9 +123,38 @@ def main():
         setup_colab_drive()
 
     ledger_path = Path("artifacts/experiment_ledger.jsonl")
-    if args.clean_ledger and ledger_path.exists():
-        ledger_path.unlink()
-        logger.info("Cleared previous ledger at %s", ledger_path)
+    if args.clean_ledger:
+        if ledger_path.exists():
+            import shutil
+            import time
+
+            # Automatically preserve existing run before starting new experiment cycle
+            archive_dir = Path("artifacts/previous_runs") / f"run_archive_{int(time.time())}"
+            archive_dir.mkdir(parents=True, exist_ok=True)
+            files_to_preserve = [
+                "experiment_ledger.jsonl",
+                "champion_model.cbm",
+                "champion_model.joblib",
+                "champion_metadata.json",
+                "SUPERVISOR_FINAL_REPORT.md",
+                "supervisor_final_report.json",
+                "holdout_evaluation.json",
+                "submission.csv",
+                "training_visualization_website.html",
+            ]
+            for fname in files_to_preserve:
+                fpath = Path("artifacts") / fname
+                if fpath.exists():
+                    shutil.copy2(fpath, archive_dir / fname)
+
+            logger.info("Preserved previous training run to: %s", archive_dir)
+            ledger_path.unlink()
+            logger.info("Cleared previous ledger at %s for fresh tournament run.", ledger_path)
+
+        optuna_db = Path("artifacts/optuna_study.db")
+        if optuna_db.exists():
+            optuna_db.unlink()
+            logger.info("Reset Optuna study database at %s for fresh tournament.", optuna_db)
 
     logger.info(
         "System mode: %s (Execute live model: %s, Device: %s)",
@@ -122,12 +163,13 @@ def main():
         active_device,
     )
 
-    # Initialize Orchestrator Loop with CatBoost
+    # Initialize Orchestrator Loop with Multi-Model Tournament Support
     orchestrator = AutonomousExperimentLoop(
         max_runs=args.max_runs,
         ledger_path=ledger_path,
         execute_live_training=execute_live,
         device=active_device,
+        tournament_candidates=tournament_candidates,
     )
 
     # Load canonical or sample dataset

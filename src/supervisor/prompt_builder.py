@@ -22,11 +22,19 @@ Your objective is to maximize customer churn predictive performance on the Telco
 - Rule: Exactly ONE fit-and-validation cycle (e.g., 5-Fold Stratified Cross-Validation) counts as 1 experiment run. Profiling, data cleaning, and non-fitting operations do NOT consume experiment budget.
 
 =========================================
-CLASSIFIER ARCHITECTURE (LOCKED)
+MULTI-MODEL EXPLORATION & SELECTION TOURNAMENT
 =========================================
-Following Pre-Flight Inductive Bias Profiling (Step 0, zero experiment cost), the classifier family has been mathematically matched and LOCKED to CatBoostClassifier:
-- Rationale: The Telco Churn dataset has 80% categorical features (16 of 20). CatBoost's Ordered Target Statistics prevent target leakage across random permutations, and its symmetric (oblivious) trees act as a structural regularizer against overfitting on small-to-medium tabular data (~5,600 training rows).
-- You are optimizing CatBoost exclusively across all 15 experiments. Do NOT switch model families.
+The agentic optimization loop follows a 2-stage Tournament Architecture:
+1. Tournament Phase (Initial Exploration Runs):
+   - The loop runs one baseline experiment on each candidate model family under identical 5-fold cross-validation splits and feature sets:
+     * CatBoost ("catboost"): Oblivious symmetric trees with ordered target statistics.
+     * LightGBM ("lightgbm"): Fast histogram-based leaf-wise gradient boosting.
+     * XGBoost ("xgboost"): Second-order Taylor approximation depth-wise gradient boosting.
+     * Random Forest ("random_forest"): Bagged ensemble of unpruned/regularized decision trees.
+     * Logistic Regression ("logistic_regression"): Scaled L2-regularized linear baseline.
+2. Exploitation & Fine-Tuning Phase:
+   - Once all tournament candidates are evaluated, the single most promising architecture with the highest out-of-fold ROC-AUC (and PR-AUC) is crowned Tournament Champion and LOCKED.
+   - For all remaining experiments up to the 15-run budget, you must optimize hyperparameters, feature transformations, regularizations, and thresholding exclusively for the locked champion family.
 
 =========================================
 MATHEMATICAL REASONING GUIDELINES
@@ -56,11 +64,11 @@ Ensure your output strictly adheres to this structure:
   "hypothesis": "<detailed scientific hypothesis citing telemetry>",
   "mathematical_justification": "<explicit quantitative reasoning citing Overfitting Index / Generalization Gap>",
   "hyperparameters": {
-    "model_family": "catboost",
+    "model_family": "catboost" | "lightgbm" | "xgboost" | "random_forest" | "logistic_regression",
     "learning_rate": <float between 0.005 and 0.3>,
-    "depth": <int between 3 and 10>,
-    "l2_leaf_reg": <float between 0.1 and 50.0>,
-    "iterations": <int between 300 and 3000>,
+    "depth": <int between 1 and 15>,
+    "l2_leaf_reg": <float between 0.01 and 50.0>,
+    "iterations": <int between 50 and 3000>,
     "subsample": <float between 0.4 and 1.0>,
     "bagging_temperature": <float between 0.0 and 1.0>,
     "random_strength": <float between 0.0 and 10.0>,
@@ -105,6 +113,7 @@ Ensure your output strictly adheres to this structure:
         for h in (history or []):
             h_id = h.get("experiment_id", 0)
             h_hyp = h.get("hyperparameters", {})
+            h_fam = str(h_hyp.get("model_family", "catboost"))[:7]
             h_met = h.get("metrics", {})
             h_auc = h_met.get("oof_roc_auc", 0.0)
             h_pr = h_met.get("oof_pr_auc", 0.0)
@@ -112,12 +121,12 @@ Ensure your output strictly adheres to this structure:
             delta_best = h_auc - best_auc
             delta_str = "CHAMPION" if abs(delta_best) < 1e-5 else f"{delta_best:+.5f}"
             history_rows.append(
-                f"| {h_id:2d}  | {h_hyp.get('depth', 6):2d}  | {h_hyp.get('l2_leaf_reg', 3.0):5.1f} | {h_hyp.get('learning_rate', 0.05):.4f} | {h_hyp.get('iterations', 1000):4d} | {h_hyp.get('class_weight_mode', 'None'):11s} | {h_auc:11.5f} | {h_pr:10.5f} | {h_omega:6.2f}% | {delta_str:13s} |"
+                f"| {h_id:2d}  | {h_fam:7s} | {h_hyp.get('depth', 6):2d}  | {h_hyp.get('l2_leaf_reg', 3.0):5.1f} | {h_hyp.get('learning_rate', 0.05):.4f} | {h_hyp.get('iterations', 1000):4d} | {h_hyp.get('class_weight_mode', 'None'):11s} | {h_auc:11.5f} | {h_pr:10.5f} | {h_omega:6.2f}% | {delta_str:13s} |"
             )
 
         history_table = (
-            "| Run | Dep | L2Reg | LR     | Iter | Class Weight| OOF ROC-AUC | OOF PR-AUC | Omega   | Status/Delta  |\n"
-            "|-----|-----|-------|--------|------|-------------|-------------|------------|---------|---------------|\n"
+            "| Run | Family  | Dep | L2Reg | LR     | Iter | Class Weight| OOF ROC-AUC | OOF PR-AUC | Omega   | Status/Delta  |\n"
+            "|-----|---------|-----|-------|--------|------|-------------|-------------|------------|---------|---------------|\n"
             + "\n".join(history_rows)
         ) if history_rows else "  (No prior runs recorded yet - This is Experiment 1 benchmark)"
 

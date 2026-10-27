@@ -276,7 +276,8 @@ class SupervisorLLMClient:
             "temperature": 0.2,
         }
 
-        with httpx.Client(timeout=60.0) as client:
+        timeout = httpx.Timeout(45.0, connect=10.0, read=45.0)
+        with httpx.Client(timeout=timeout) as client:
             resp = client.post(url, headers=headers, json=payload)
             resp.raise_for_status()
             data = resp.json()

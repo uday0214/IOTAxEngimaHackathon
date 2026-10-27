@@ -1,8 +1,11 @@
 """Base classifier interface and comprehensive telemetry data models."""
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
+import numpy as np
 import pandas as pd
 
 
@@ -60,6 +63,22 @@ class ExperimentTelemetry:
     # Hardware & performance profiling
     training_duration_seconds: float = 0.0
     device_used: str = "CPU"
+    throughput_samples_per_sec: float = 0.0
+    inference_latency_ms: float = 0.0
+    fold_cv_roc_auc: float = 0.0
+
+    # Multi-threshold decision & business spectrum
+    threshold_sweep: List[Dict[str, Any]] = field(default_factory=list)
+
+    # Decile cumulative gains & lift analysis
+    lift_and_gain_curve: List[Dict[str, Any]] = field(default_factory=list)
+
+    # Prediction probability distribution moments & separation
+    distribution_stats: Dict[str, Any] = field(default_factory=dict)
+    separation_margin: float = 0.0
+
+    # Subgroup & cohort slice diagnostics
+    cohort_slice_metrics: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
 
 
 class BaseModel(ABC):
@@ -74,4 +93,25 @@ class BaseModel(ABC):
         random_state: int = 42,
     ) -> ExperimentTelemetry:
         """Executes n-fold stratified cross-validation and records extensive telemetry."""
+        pass
+
+    @abstractmethod
+    def fit_final(self, X: pd.DataFrame, y: pd.Series, random_seed: int = 42) -> Any:
+        """Fits a final champion model on the entire dataset."""
+        pass
+
+    @abstractmethod
+    def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
+        """Generates class probability predictions."""
+        pass
+
+    @abstractmethod
+    def save_model(self, path: Any) -> Any:
+        """Saves champion model to disk."""
+        pass
+
+    @classmethod
+    @abstractmethod
+    def load_model(cls, path: Any, config: Optional[Any] = None) -> "BaseModel":
+        """Loads a persisted model from disk."""
         pass
