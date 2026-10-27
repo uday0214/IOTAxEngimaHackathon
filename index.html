@@ -3,33 +3,37 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Customer Retention Intelligence</title>
+  <title>Linear • Customer Retention Intelligence</title>
   
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <style>
     :root {
-      /* Refined Cream & Warm Charcoal Executive Palette */
-      --bg-cream: #F8F5EE;
-      --bg-surface: #FFFFFF;
-      --border-warm: #E6DFD3;
-      --border-subtle: #EDE7DC;
+      /* Linear Dark High-End Architectural Palette */
+      --bg-canvas: #08090A;
+      --bg-surface: #0F1012;
+      --bg-surface-elevated: #16181C;
+      --bg-surface-hover: #1C1F24;
       
-      --text-main: #201D1A;
-      --text-muted: #6B6357;
-      --text-faint: #9E9587;
+      --border-subtle: rgba(255, 255, 255, 0.07);
+      --border-medium: rgba(255, 255, 255, 0.12);
+      --border-focus: rgba(255, 255, 255, 0.22);
       
-      --accent-charcoal: #201D1A;
-      --accent-warm-stone: #423D36;
+      --text-high: #F7F8F8;
+      --text-medium: #8A8F98;
+      --text-dim: #545861;
+      
+      --accent-purple: #5E6AD2;
+      --accent-purple-dim: rgba(94, 106, 210, 0.12);
+      --accent-emerald: #4EBE9E;
+      --accent-emerald-dim: rgba(78, 190, 158, 0.12);
 
-      --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
       --font-mono: 'JetBrains Mono', monospace;
-
-      --shadow-sm: 0 1px 3px rgba(32, 29, 26, 0.03), 0 2px 6px rgba(32, 29, 26, 0.02);
-      --shadow-card: 0 4px 16px -2px rgba(32, 29, 26, 0.04), 0 1px 3px rgba(32, 29, 26, 0.02);
-      --shadow-modal: 0 24px 60px -12px rgba(32, 29, 26, 0.16), 0 0 0 1px rgba(32, 29, 26, 0.05);
     }
 
     * {
@@ -40,871 +44,1390 @@
 
     body {
       font-family: var(--font-sans);
-      background-color: var(--bg-cream);
-      color: var(--text-main);
+      background-color: var(--bg-canvas);
+      color: var(--text-high);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
-      user-select: none;
       -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* SUBTLE LINEAR AMBIENT GRADIENT */
+    .ambient-glow {
+      position: fixed;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 1100px;
+      height: 480px;
+      background: radial-gradient(ellipse at 50% 0%, rgba(94, 106, 210, 0.10) 0%, rgba(8, 9, 10, 0) 72%);
+      pointer-events: none;
+      z-index: 0;
     }
 
     .container {
-      max-width: 820px;
+      max-width: 1200px;
       margin: 0 auto;
-      padding: 0 32px;
+      padding: 0 52px;
+      width: 100%;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* TOP GLOBAL NAVIGATION */
+    .top-nav {
+      height: 80px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-subtle);
+      position: sticky;
+      top: 0;
+      background: rgba(8, 9, 10, 0.88);
+      backdrop-filter: blur(18px);
+      z-index: 100;
+    }
+
+    .brand-wrap {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+    }
+
+    .linear-logo {
+      width: 19px;
+      height: 19px;
+      fill: none;
+      stroke: var(--text-high);
+      stroke-width: 1.8;
+    }
+
+    .brand-text {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: -0.2px;
+    }
+
+    .brand-badge {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-medium);
+    }
+
+    /* SUBSECTION TAB BAR */
+    .nav-subsections {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      background: rgba(255, 255, 255, 0.03);
+      padding: 4px;
+      border-radius: 10px;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .sub-tab {
+      background: transparent;
+      border: none;
+      color: var(--text-medium);
+      font-family: var(--font-sans);
+      font-size: 12px;
+      font-weight: 500;
+      padding: 7px 16px;
+      border-radius: 7px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .sub-tab:hover {
+      color: var(--text-high);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .sub-tab.active {
+      color: var(--text-high);
+      background: rgba(255, 255, 255, 0.09);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+    }
+
+    .linear-btn {
+      font-family: var(--font-sans);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 9px 20px;
+      border-radius: 999px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      transition: all 0.15s ease;
+      text-decoration: none;
+      border: 1px solid var(--border-medium);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-high);
+    }
+
+    .linear-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: var(--border-focus);
+    }
+
+    .linear-btn.primary {
+      background: var(--text-high);
+      color: #08090A;
+      border-color: var(--text-high);
+    }
+
+    .linear-btn.primary:hover {
+      background: #E5E6E8;
+    }
+
+    /* MAIN VIEW CONTAINER */
+    main {
+      padding-top: 64px;
+      padding-bottom: 120px;
+    }
+
+    .view-subsection {
+      display: none;
+      animation: fadeIn 0.2s ease-out;
+    }
+
+    .view-subsection.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* HERO SECTION: ULTRA-MINIMAL, ROOMY, CRISP */
+    .hero-container {
+      padding: 88px 0 96px;
+      max-width: 920px;
+    }
+
+    .hero-editorial {
+      font-size: 52px;
+      font-weight: 600;
+      letter-spacing: -0.04em;
+      line-height: 1.14;
+      color: var(--text-high);
+      margin-bottom: 24px;
+    }
+
+    .hero-editorial .editorial-muted {
+      color: var(--text-medium);
+      font-weight: 400;
+    }
+
+    .hero-actions-row {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      margin-top: 40px;
+    }
+
+    /* THREE LINEAR ISOMETRIC PILLARS (Expansive Spacing) */
+    .pillars-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 56px;
+      margin-bottom: 96px;
+      padding-top: 64px;
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    .pillar-card {
+      background: transparent;
+      padding: 0 4px;
+      display: flex;
+      flex-direction: column;
+      cursor: pointer;
+    }
+
+    .pillar-fig-tag {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      color: var(--text-dim);
+      margin-bottom: 24px;
+    }
+
+    .pillar-visual {
+      height: 150px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 30px;
+    }
+
+    .wireframe-svg {
+      width: 100%;
+      height: 100%;
+      stroke: var(--text-medium);
+      stroke-width: 1.15;
+      fill: none;
+      transition: all 0.2s ease;
+    }
+
+    .pillar-card:hover .wireframe-svg {
+      stroke: var(--text-high);
+      transform: translateY(-4px);
+    }
+
+    .pillar-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-high);
+      margin-bottom: 8px;
+      letter-spacing: -0.2px;
+    }
+
+    .pillar-desc {
+      font-size: 12.5px;
+      line-height: 1.5;
+      color: var(--text-medium);
+    }
+
+    /* REFINED METRIC STRIP (Airy, Roomy) */
+    .stat-strip {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1px;
+      background: var(--border-subtle);
+      border: 1px solid var(--border-subtle);
+      border-radius: 18px;
+      overflow: hidden;
+      margin-bottom: 96px;
+    }
+
+    .stat-cell {
+      background: var(--bg-surface);
+      padding: 36px 40px;
+      transition: background 0.15s;
+    }
+
+    .stat-cell:hover {
+      background: var(--bg-surface-elevated);
+    }
+
+    .stat-label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 14px;
+    }
+
+    .stat-num {
+      font-family: var(--font-mono);
+      font-size: 26px;
+      font-weight: 600;
+      color: var(--text-high);
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    .stat-sub {
+      font-size: 11.5px;
+      color: var(--text-medium);
+      margin-top: 8px;
+    }
+
+    /* SUBSECTION HEADERS */
+    .section-head {
+      margin-bottom: 48px;
+    }
+
+    .section-tag {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--accent-purple);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    .section-title {
+      font-size: 28px;
+      font-weight: 600;
+      letter-spacing: -0.025em;
+      color: var(--text-high);
+      margin-bottom: 8px;
+    }
+
+    .section-sub {
+      font-size: 13.5px;
+      color: var(--text-medium);
+    }
+
+    /* CHARTS LAYOUT */
+    .charts-duo {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 36px;
+      margin-bottom: 56px;
+    }
+
+    .chart-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 20px;
+      padding: 40px 44px;
+    }
+
+    .chart-card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 28px;
+    }
+
+    .chart-heading {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-high);
+    }
+
+    .chart-badge {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+
+    .chart-canvas-wrapper {
+      height: 250px;
+      position: relative;
       width: 100%;
     }
 
-    /* MINIMAL TOP NAV */
-    .top-nav {
-      padding: 38px 0 28px;
+    /* PARAMETERS COMPARISON GRID */
+    .params-comparison-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 36px;
+      margin-bottom: 52px;
     }
 
-    .nav-flex {
+    .param-box {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 20px;
+      padding: 40px 44px;
+    }
+
+    .param-box.champion {
+      border-color: rgba(78, 190, 158, 0.35);
+      background: linear-gradient(180deg, rgba(78, 190, 158, 0.04) 0%, var(--bg-surface) 100%);
+    }
+
+    .param-box-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 26px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .param-pill {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      padding: 3px 9px;
+      border-radius: 5px;
+    }
+
+    .param-pill.champ {
+      background: var(--accent-emerald-dim);
+      color: var(--accent-emerald);
+      border: 1px solid rgba(78, 190, 158, 0.3);
+    }
+
+    .param-pill.trial {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-medium);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .param-spec-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px dashed rgba(255, 255, 255, 0.06);
+      font-size: 12.5px;
+    }
+
+    .param-spec-row:last-child {
+      border-bottom: none;
+    }
+
+    .spec-key {
+      color: var(--text-medium);
+    }
+
+    .spec-val {
+      font-family: var(--font-mono);
+      color: var(--text-high);
+    }
+
+    /* THREE INSIGHT CARDS */
+    .insights-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 32px;
+      margin-bottom: 56px;
+    }
+
+    .insight-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      padding: 32px 34px;
+    }
+
+    .insight-title {
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--text-high);
+      margin-bottom: 10px;
+    }
+
+    .insight-body {
+      font-size: 12px;
+      color: var(--text-medium);
+      line-height: 1.55;
+    }
+
+    /* HOLDOUT PANEL */
+    .holdout-panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 20px;
+      padding: 48px 52px;
+      margin-bottom: 56px;
+    }
+
+    .policy-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+      margin-top: 32px;
+    }
+
+    .policy-table th {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-dim);
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border-subtle);
+      text-align: left;
+    }
+
+    .policy-table td {
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--text-medium);
+    }
+
+    .policy-table tr.highlight-policy td {
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text-high);
+      font-weight: 500;
+    }
+
+    /* EXPERIMENT LEDGER TABLE */
+    .ledger-container {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 20px;
+      overflow: hidden;
+      margin-bottom: 56px;
+    }
+
+    .ledger-head-bar {
+      padding: 28px 36px;
+      border-bottom: 1px solid var(--border-subtle);
       display: flex;
       justify-content: space-between;
       align-items: center;
     }
 
-    .brand-mark {
-      font-size: 13.5px;
-      font-weight: 700;
-      letter-spacing: -0.2px;
-      color: var(--text-main);
-      display: flex;
-      align-items: center;
-      gap: 9px;
+    .ledger-table-wrap {
+      overflow-x: auto;
     }
 
-    .brand-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--text-main);
-    }
-
-    .nav-buttons {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    /* Refined Buttons matching warm cream profile */
-    .nav-btn {
-      font-family: var(--font-sans);
+    .ledger-table {
+      width: 100%;
+      border-collapse: collapse;
       font-size: 12px;
-      font-weight: 600;
-      padding: 8px 16px;
-      border-radius: 8px;
+      text-align: left;
+    }
+
+    .ledger-table th {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      padding: 16px 24px;
+      background: rgba(255, 255, 255, 0.02);
+      border-bottom: 1px solid var(--border-subtle);
+      letter-spacing: 0.05em;
+    }
+
+    .ledger-table td {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border-subtle);
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      color: var(--text-medium);
       cursor: pointer;
-      border: 1px solid var(--border-warm);
+    }
+
+    .ledger-table tr:hover td {
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text-high);
+    }
+
+    .ledger-table tr.champ-row td {
+      background: rgba(78, 190, 158, 0.04);
+      color: var(--text-high);
+    }
+
+    /* LINEAR CONSOLE PANEL */
+    .agent-panel {
       background: var(--bg-surface);
-      color: var(--text-muted);
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      transition: all 0.15s ease;
-      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--border-subtle);
+      border-radius: 20px;
+      padding: 40px 44px;
+      margin-bottom: 56px;
     }
 
-    .nav-btn:hover {
-      background: #F3EEE4;
-      color: var(--text-main);
-      border-color: #DCD4C6;
-    }
-
-    .nav-btn.primary {
-      background: var(--accent-charcoal);
-      color: var(--bg-cream);
-      border-color: var(--accent-charcoal);
-    }
-
-    .nav-btn.primary:hover {
-      background: #332F2A;
-      border-color: #332F2A;
-    }
-
-    /* Monochromatic subtle SVG icons matching warm cream theme */
-    .mono-icon {
-      width: 13px;
-      height: 13px;
-      stroke: currentColor;
-      stroke-width: 1.8;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-      fill: none;
-    }
-
-    /* MAIN EXECUTIVE WORKSPACE */
-    main {
-      padding: 24px 0 48px;
-    }
-
-    .hero-title {
-      font-size: 28px;
-      font-weight: 700;
-      letter-spacing: -0.5px;
-      line-height: 1.3;
-      color: var(--text-main);
-      margin-bottom: 10px;
-      text-align: center;
-    }
-
-    .hero-sub {
-      font-size: 14px;
-      color: var(--text-muted);
-      text-align: center;
-      margin-bottom: 34px;
-      line-height: 1.5;
-    }
-
-    /* CONCISE CHAT INTERFACE */
-    .chat-card {
-      background: var(--bg-surface);
-      border: 1px solid var(--border-warm);
-      border-radius: 14px;
-      box-shadow: var(--shadow-card);
-      overflow: hidden;
-      margin-bottom: 24px;
-      display: flex;
-      flex-direction: column;
-    }
-
-    .chat-scroll {
-      padding: 26px 28px;
+    .agent-chat-stream {
       max-height: 240px;
       overflow-y: auto;
       display: flex;
       flex-direction: column;
       gap: 14px;
+      margin-bottom: 24px;
+      padding-right: 8px;
     }
 
-    .bubble {
-      padding: 12px 18px;
+    .agent-bubble {
+      padding: 14px 20px;
       border-radius: 10px;
-      font-size: 13px;
-      line-height: 1.6;
+      font-size: 12.5px;
+      line-height: 1.55;
       max-width: 85%;
     }
 
-    .bubble.ai {
-      background: var(--bg-cream);
-      color: var(--text-main);
+    .agent-bubble.ai {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-high);
       align-self: flex-start;
-      border: 1px solid var(--border-warm);
     }
 
-    .bubble.user {
-      background: var(--accent-charcoal);
-      color: var(--bg-cream);
+    .agent-bubble.user {
+      background: var(--text-high);
+      color: var(--bg-canvas);
+      font-weight: 500;
       align-self: flex-end;
     }
 
-    .chat-input-bar {
-      padding: 14px 22px;
-      background: #FCFAF6;
-      border-top: 1px solid var(--border-subtle);
+    .agent-input-row {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 14px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-medium);
+      border-radius: 12px;
+      padding: 10px 18px;
     }
 
-    .chat-input {
+    .agent-input {
       flex: 1;
-      border: none;
       background: transparent;
+      border: none;
       outline: none;
+      color: var(--text-high);
       font-family: var(--font-sans);
       font-size: 13px;
-      color: var(--text-main);
     }
 
-    .chat-input::placeholder { color: var(--text-faint); }
-
-    .btn-send {
-      background: var(--accent-charcoal);
-      color: var(--bg-cream);
-      border: none;
-      width: 32px;
-      height: 32px;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      transition: background 0.15s;
+    .agent-input::placeholder {
+      color: var(--text-dim);
     }
 
-    .btn-send:hover { background: #38332D; }
-
-    /* REFINED CHIPS */
-    .chips-group {
+    .agent-quick-pills {
       display: flex;
-      justify-content: center;
+      gap: 12px;
       flex-wrap: wrap;
-      gap: 10px;
-      margin-bottom: 32px;
-    }
-
-    .text-chip {
-      background: var(--bg-surface);
-      border: 1px solid var(--border-warm);
-      padding: 7px 15px;
-      border-radius: 8px;
-      font-size: 12px;
-      font-weight: 500;
-      color: var(--text-muted);
-      cursor: pointer;
-      box-shadow: var(--shadow-sm);
-      transition: all 0.15s;
-    }
-
-    .text-chip:hover {
-      background: var(--bg-cream);
-      color: var(--text-main);
-      border-color: #D4CBBC;
-    }
-
-    /* 2 MINIMALIST WORKSPACE CARDS (NO NUMBERS, ZERO PERCENTAGES) */
-    .cards-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-    }
-
-    .work-card {
-      background: var(--bg-surface);
-      border: 1px solid var(--border-warm);
-      border-radius: 14px;
-      padding: 26px 24px;
-      box-shadow: var(--shadow-card);
-      cursor: pointer;
-      transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      min-height: 155px;
-    }
-
-    .work-card:hover {
-      border-color: #D2C8B8;
-      box-shadow: 0 8px 24px -4px rgba(32, 29, 26, 0.08);
-      transform: translateY(-2px);
-    }
-
-    .card-heading {
-      font-size: 14.5px;
-      font-weight: 600;
-      color: var(--text-main);
-      letter-spacing: -0.2px;
-      margin-bottom: 8px;
-    }
-
-    .card-detail {
-      font-size: 12px;
-      color: var(--text-muted);
-      line-height: 1.55;
-    }
-
-    .card-link {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--text-main);
-      display: flex;
-      align-items: center;
-      gap: 6px;
       margin-top: 20px;
     }
 
-    /* Wave indicator on Card 2 */
-    .wave-line {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin: 14px 0 16px;
+    .pill-btn {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-subtle);
+      padding: 7px 16px;
+      border-radius: 8px;
+      font-size: 11.5px;
+      color: var(--text-medium);
+      cursor: pointer;
+      transition: all 0.15s;
     }
 
-    .wave-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: #E4DDD1;
-      transition: all 0.25s;
-    }
-
-    .wave-dot.active {
-      background: var(--text-main);
-      transform: scale(1.25);
-    }
-
-    .wave-bar {
-      flex: 1;
-      height: 1.5px;
-      background: #E8E2D6;
+    .pill-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text-high);
     }
 
     /* FOOTER */
-    .footer {
-      padding: 36px 0 44px;
+    footer {
+      border-top: 1px solid var(--border-subtle);
+      padding: 48px 0 64px;
       text-align: center;
       font-size: 12px;
-      color: var(--text-faint);
+      color: var(--text-dim);
     }
 
-    /* ==================== CLEAN SHADOW POPUPS ==================== */
-    .modal-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      background: rgba(32, 29, 26, 0.35);
-      backdrop-filter: blur(10px);
-      z-index: 2000;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      padding: 56px 36px;
-    }
-
-    .modal-overlay.open { display: flex; }
-
-    .clean-popup {
-      background: var(--bg-surface);
-      border: 1px solid var(--border-warm);
-      border-radius: 20px;
-      width: 100%;
-      max-width: 600px;
-      box-shadow: var(--shadow-modal);
-      overflow: hidden;
-      animation: popIn 0.18s ease-out;
-    }
-
-    @keyframes popIn {
-      from { opacity: 0; transform: scale(0.97) translateY(8px); }
-      to { opacity: 1; transform: scale(1) translateY(0); }
-    }
-
-    .popup-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 26px 36px;
-      border-bottom: 1px solid var(--border-subtle);
-    }
-
-    .popup-title {
-      font-size: 15px;
-      font-weight: 600;
-      color: var(--text-main);
-    }
-
-    .popup-close {
-      width: 30px;
-      height: 30px;
-      border-radius: 8px;
-      background: var(--bg-cream);
-      border: 1px solid var(--border-warm);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      color: var(--text-muted);
-      font-size: 12px;
-      transition: all 0.15s;
-    }
-
-    .popup-close:hover { 
-      color: var(--text-main);
-      background: #F0EADF;
-    }
-
-    .popup-body {
-      padding: 36px;
-      max-height: 75vh;
-      overflow-y: auto;
-    }
-
-    .tabs-bar {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 26px;
-    }
-
-    .tab-item {
-      padding: 8px 16px;
-      font-size: 12px;
-      font-weight: 500;
-      border-radius: 7px;
-      border: 1px solid var(--border-warm);
-      background: var(--bg-cream);
-      color: var(--text-muted);
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-
-    .tab-item.active {
-      background: var(--accent-charcoal);
-      color: var(--bg-cream);
-      border-color: var(--accent-charcoal);
-    }
-
-    .tab-pane { display: none; }
-    .tab-pane.active { display: block; }
-
-    .grid-duo {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
-      margin-bottom: 24px;
-    }
-
-    .grid-box {
-      background: var(--bg-cream);
-      border: 1px solid var(--border-warm);
-      border-radius: 12px;
-      padding: 18px 16px;
-      text-align: center;
-    }
-
-    .grid-box .term {
-      font-size: 13.5px;
-      font-weight: 600;
-      color: var(--text-main);
-    }
-
-    .grid-box .expl {
-      font-size: 11.5px;
-      color: var(--text-muted);
-      margin-top: 5px;
-      line-height: 1.4;
-    }
-
-    /* Accordion for Researchers */
-    .researcher-drawer {
-      margin-top: 24px;
-      background: #FAF7F2;
-      border: 1px solid var(--border-warm);
-      border-radius: 12px;
-      overflow: hidden;
-    }
-
-    .drawer-trigger {
-      padding: 14px 20px;
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--text-muted);
-      cursor: pointer;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      transition: background 0.15s;
-    }
-
-    .drawer-trigger:hover {
-      background: #F3ECE1;
-      color: var(--text-main);
-    }
-
-    .drawer-body {
-      padding: 18px 20px;
-      display: none;
-      font-size: 12px;
-      line-height: 1.65;
-      color: var(--text-muted);
-      border-top: 1px solid var(--border-warm);
-    }
-
-    .drawer-body.open { display: block; }
-
-    @media (max-width: 620px) {
-      .cards-row { grid-template-columns: 1fr; gap: 14px; }
-      .hero-title { font-size: 24px; }
-      .nav-buttons { gap: 8px; }
-      .grid-duo { grid-template-columns: 1fr; gap: 10px; }
-      .container { padding: 0 20px; }
-      .modal-overlay { padding: 24px 16px; }
-      .popup-head { padding: 20px; }
-      .popup-body { padding: 20px; }
+    @media (max-width: 900px) {
+      .hero-editorial { font-size: 36px; }
+      .pillars-grid { grid-template-columns: 1fr; gap: 40px; }
+      .stat-strip { grid-template-columns: 1fr 1fr; }
+      .charts-duo { grid-template-columns: 1fr; }
+      .params-comparison-grid { grid-template-columns: 1fr; }
+      .insights-grid { grid-template-columns: 1fr; }
+      .container { padding: 0 24px; }
+      .top-nav { flex-wrap: wrap; height: auto; padding: 16px 0; gap: 14px; }
+      .nav-subsections { overflow-x: auto; width: 100%; }
     }
   </style>
 </head>
 <body>
 
+  <div class="ambient-glow"></div>
+
   <div class="container">
     
     <!-- TOP NAVIGATION -->
     <header class="top-nav">
-      <div class="nav-flex">
-        <div class="brand-mark">
-          <div class="brand-dot"></div>
-          <span>Customer Intelligence AI</span>
-        </div>
+      <div class="brand-wrap" onclick="switchView('overview')">
+        <svg class="linear-logo" viewBox="0 0 24 24">
+          <path d="M4.5 16.5L16.5 4.5M7.5 19.5L19.5 7.5M10.5 22.5L22.5 10.5" stroke-linecap="round"/>
+        </svg>
+        <span class="brand-text">Retention.ai</span>
+        <span class="brand-badge">TELCO // 15 RUNS</span>
+      </div>
 
-        <div class="nav-buttons">
-          <!-- Monochromatic subtle buttons matching warm cream profile -->
-          <button class="nav-btn" onclick="openDatasetModal()">
-            <svg class="mono-icon" viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="M4 10h16M10 4v16"/></svg>
-            <span>Dataset</span>
-          </button>
-          
-          <button class="nav-btn" onclick="openResearchersModal()">
-            <svg class="mono-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
-            <span>Research</span>
-          </button>
-          
-          <button class="nav-btn primary" onclick="runLoopStep()">
-            <span>Execute Loop</span>
-          </button>
-        </div>
+      <!-- SUBSECTION TABS -->
+      <nav class="nav-subsections">
+        <button class="sub-tab active" id="tab-overview" onclick="switchView('overview')">Overview</button>
+        <button class="sub-tab" id="tab-trajectory" onclick="switchView('trajectory')">Charts</button>
+        <button class="sub-tab" id="tab-params" onclick="switchView('params')">Parameters</button>
+        <button class="sub-tab" id="tab-holdout" onclick="switchView('holdout')">Holdout Test</button>
+        <button class="sub-tab" id="tab-ledger" onclick="switchView('ledger')">Ledger</button>
+        <button class="sub-tab" id="tab-agent" onclick="switchView('agent')">Console</button>
+      </nav>
+
+      <div>
+        <button class="linear-btn primary" onclick="stepRun()">
+          <span id="stepActionText">Step Run (1/15)</span>
+        </button>
       </div>
     </header>
 
-    <!-- MAIN INTERACTIVE SPACE -->
+    <!-- MAIN VIEW CONTAINER -->
     <main>
-      
-      <div class="hero-title">Predict & Retain High-Value Customers</div>
-      <div class="hero-sub">Autonomous retention intelligence and model calibration.</div>
 
-      <!-- AI INTERACTION CARD -->
-      <div class="chat-card">
-        <div class="chat-scroll" id="chatScroll">
-          <div class="bubble ai">
-            Hello. How can I assist with retention today?
-          </div>
-        </div>
-
-        <div class="chat-input-bar">
-          <input type="text" class="chat-input" id="chatInput" placeholder="Ask anything..." onkeypress="if(event.key==='Enter')sendChat()">
-          <button class="btn-send" onclick="sendChat()">
-            <svg style="width:12px; height:12px; stroke:#FFF; stroke-width:2.2; fill:none;" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-          </button>
-        </div>
-      </div>
-
-      <!-- SUBTLE TEXT CHIPS -->
-      <div class="chips-group">
-        <div class="text-chip" onclick="askChip('CatBoost')">CatBoost</div>
-        <div class="text-chip" onclick="askChip('Looping')">Looping</div>
-        <div class="text-chip" onclick="askChip('Datasets')">Datasets</div>
-        <div class="text-chip" onclick="askChip('Early Stopping')">Early Stopping</div>
-      </div>
-
-      <!-- 2 REFINED WORKSPACE CARDS (ZERO CLUTTER, NO NUMBERS) -->
-      <div class="cards-row">
+      <!-- ========================================== -->
+      <!-- SUBSECTION 1: OVERVIEW & PILLARS           -->
+      <!-- ========================================== -->
+      <section class="view-subsection active" id="sub-overview">
         
-        <!-- CARD 1: CHURN DYNAMICS -->
-        <div class="work-card" onclick="openChurnModal()">
-          <div>
-            <div class="card-heading">Churn Dynamics</div>
-            <div class="wave-line" style="margin: 16px 0 12px;">
-              <div style="flex: 1.8; height: 2px; background: var(--text-main); border-radius: 2px;"></div>
-              <div style="flex: 1; height: 2px; background: #E8E2D6; border-radius: 2px;"></div>
-            </div>
-          </div>
-          <div class="card-link">
-            <span>Explore Dynamics</span>
-            <svg style="width:10px; height:10px; stroke:currentColor; stroke-width:2; fill:none;" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        <!-- MINIMAL HERO HEADLINE -->
+        <div class="hero-container">
+          <h1 class="hero-editorial">
+            A new standard for retention.
+            <span class="editorial-muted">Autonomous model exploration across classifiers.</span>
+          </h1>
+          <div class="hero-actions-row">
+            <button class="linear-btn primary" onclick="switchView('params')">Compare Parameters →</button>
+            <button class="linear-btn" onclick="switchView('holdout')">Holdout Results</button>
           </div>
         </div>
 
-        <!-- CARD 2: LOOPING ENGINE -->
-        <div class="work-card" onclick="openLoopModal()">
-          <div>
-            <div class="card-heading">Looping Engine</div>
-            
-            <div class="wave-line" style="margin: 16px 0 12px;">
-              <div class="wave-dot" id="w1"></div>
-              <div class="wave-bar"></div>
-              <div class="wave-dot" id="w2"></div>
-              <div class="wave-bar"></div>
-              <div class="wave-dot active" id="w3"></div>
-              <div class="wave-bar"></div>
-              <div class="wave-dot" id="w4"></div>
-              <div class="wave-bar"></div>
-              <div class="wave-dot" id="w5"></div>
+        <!-- THREE PILLARS (FIG 0.1, FIG 0.2, FIG 0.3) -->
+        <div class="pillars-grid">
+          
+          <!-- FIG 0.1 -->
+          <div class="pillar-card" onclick="switchView('params')">
+            <div class="pillar-fig-tag">FIG 0.1</div>
+            <div class="pillar-visual">
+              <svg class="wireframe-svg" viewBox="0 0 160 120">
+                <path d="M80 15 L135 42 L80 69 L25 42 Z"/>
+                <ellipse cx="80" cy="42" rx="20" ry="10"/>
+                <path d="M25 42 L25 54 L80 81 L135 54 L135 42"/>
+                <path d="M25 54 L25 66 L80 93 L135 66 L135 54"/>
+                <path d="M25 66 L25 78 L80 105 L135 78 L135 66"/>
+                <line x1="80" y1="69" x2="80" y2="105"/>
+              </svg>
+            </div>
+            <div class="pillar-title">Multi-Classifier</div>
+            <div class="pillar-desc">
+              CatBoost, LightGBM, and XGBoost.
             </div>
           </div>
-          <div class="card-link">
-            <span>Inspect Engine</span>
-            <svg style="width:10px; height:10px; stroke:currentColor; stroke-width:2; fill:none;" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+
+          <!-- FIG 0.2 -->
+          <div class="pillar-card" onclick="switchView('ledger')">
+            <div class="pillar-fig-tag">FIG 0.2</div>
+            <div class="pillar-visual">
+              <svg class="wireframe-svg" viewBox="0 0 160 120">
+                <path d="M80 20 L105 32 L80 44 L55 32 Z"/>
+                <path d="M55 32 L55 58 L80 70 L105 58 L105 32"/>
+                <line x1="80" y1="44" x2="80" y2="70"/>
+                <path d="M108 42 L133 54 L108 66 L83 54 Z"/>
+                <path d="M83 54 L83 80 L108 92 L133 80 L133 54"/>
+                <line x1="108" y1="66" x2="108" y2="92"/>
+                <path d="M52 42 L77 54 L52 66 L27 54 Z"/>
+                <path d="M27 54 L27 80 L52 92 L77 80 L77 54"/>
+                <line x1="52" y1="66" x2="52" y2="92"/>
+              </svg>
+            </div>
+            <div class="pillar-title">15-Run Budget</div>
+            <div class="pillar-desc">
+              Calibrated search with early stopping.
+            </div>
+          </div>
+
+          <!-- FIG 0.3 -->
+          <div class="pillar-card" onclick="switchView('holdout')">
+            <div class="pillar-fig-tag">FIG 0.3</div>
+            <div class="pillar-visual">
+              <svg class="wireframe-svg" viewBox="0 0 160 120">
+                <path d="M30 95 L60 80 L60 30 L30 45 Z"/>
+                <path d="M45 90 L75 75 L75 25 L45 40 Z"/>
+                <path d="M60 85 L90 70 L90 20 L60 35 Z"/>
+                <path d="M75 80 L105 65 L105 15 L75 30 Z"/>
+                <path d="M90 75 L120 60 L120 10 L90 25 Z"/>
+                <line x1="30" y1="95" x2="120" y2="60"/>
+              </svg>
+            </div>
+            <div class="pillar-title">Holdout Verification</div>
+            <div class="pillar-desc">
+              1,409 accounts at 0.312 cutoff.
+            </div>
+          </div>
+
+        </div>
+
+        <!-- STAT STRIP -->
+        <div class="stat-strip">
+          <div class="stat-cell">
+            <div class="stat-label">Top Classifier</div>
+            <div class="stat-num" id="statBestModel">CatBoost</div>
+            <div class="stat-sub" id="statBestRun">Run #1 (Champion)</div>
+          </div>
+          <div class="stat-cell">
+            <div class="stat-label">Validation ROC</div>
+            <div class="stat-num" id="statTopVal">0.8505</div>
+            <div class="stat-sub">5-Fold Stratified Split</div>
+          </div>
+          <div class="stat-cell">
+            <div class="stat-label">Holdout ROC</div>
+            <div class="stat-num" id="statHoldoutRoc">0.8443</div>
+            <div class="stat-sub">1,409 Unseen Records</div>
+          </div>
+          <div class="stat-cell">
+            <div class="stat-label">Budget Limit</div>
+            <div class="stat-num">15 / 15</div>
+            <div class="stat-sub">Runs Completed</div>
           </div>
         </div>
 
-      </div>
+      </section>
+
+      <!-- ========================================== -->
+      <!-- SUBSECTION 2: CHARTS & TRAJECTORY         -->
+      <!-- ========================================== -->
+      <section class="view-subsection" id="sub-trajectory">
+        <div class="section-head">
+          <div class="section-tag">01 // CHARTS</div>
+          <h2 class="section-title">Optimization Trajectory</h2>
+          <div class="section-sub">Metric progression across the 15-iteration search space and out-of-sample check.</div>
+        </div>
+
+        <div class="charts-duo">
+          <div class="chart-card">
+            <div class="chart-card-head">
+              <span class="chart-heading">Trajectory Across Iterations</span>
+              <span class="chart-badge">ROC-AUC vs PR-AUC</span>
+            </div>
+            <div class="chart-canvas-wrapper">
+              <canvas id="linearTrajChart"></canvas>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <div class="chart-card-head">
+              <span class="chart-heading">Validation vs Holdout Benchmark</span>
+              <span class="chart-badge">1,409 Test Rows</span>
+            </div>
+            <div class="chart-canvas-wrapper">
+              <canvas id="linearHoldoutChart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <div class="insights-grid">
+          <div class="insight-card">
+            <div class="insight-title">Validation Stability</div>
+            <div class="insight-body">Model ranking metrics remain tightly bounded between 0.8493 and 0.8505 across trials.</div>
+          </div>
+          <div class="insight-card">
+            <div class="insight-title">Holdout Delta</div>
+            <div class="insight-body">Cross-validation score of 0.8505 maps cleanly to 0.8443 on sealed holdout accounts.</div>
+          </div>
+          <div class="insight-card">
+            <div class="insight-title">Convergence</div>
+            <div class="insight-body">Early stopping avoids overparameterization and preserves compute on noisy validation slices.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================== -->
+      <!-- SUBSECTION 3: PARAMETER MATRIX             -->
+      <!-- ========================================== -->
+      <section class="view-subsection" id="sub-params">
+        <div class="section-head">
+          <div class="section-tag">02 // HYPERPARAMETERS</div>
+          <h2 class="section-title">Parameter Comparison</h2>
+          <div class="section-sub">Direct side-by-side inspection of trial parameters against the leading model.</div>
+        </div>
+
+        <div style="margin-bottom: 32px; display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-size:12.5px; color:var(--text-medium);">Select trial to inspect:</span>
+          <select id="paramSelect" onchange="renderParamComparison()" style="padding:10px 18px; border:1px solid var(--border-medium); border-radius:8px; background:var(--bg-surface); font-family:var(--font-sans); font-size:12px; color:var(--text-high); outline:none;">
+          </select>
+        </div>
+
+        <div class="params-comparison-grid" id="paramsComparisonWrap">
+        </div>
+
+        <div class="insights-grid">
+          <div class="insight-card">
+            <div class="insight-title">Tree Depth & Complexity</div>
+            <div class="insight-body">Depth 6 captures subscriber interactions cleanly; deeper trees overfit boundary noise.</div>
+          </div>
+          <div class="insight-card">
+            <div class="insight-title">Leaf Regularization</div>
+            <div class="insight-body">L2=3.0 stabilizes leaf outputs; excessive regularization dampens minority churn signals.</div>
+          </div>
+          <div class="insight-card">
+            <div class="insight-title">Subsampling & Bagging</div>
+            <div class="insight-body">Controlled variance provides consistent gradient updates on tabular subscriber data.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================== -->
+      <!-- SUBSECTION 4: HOLDOUT TEST BENCHMARK       -->
+      <!-- ========================================== -->
+      <section class="view-subsection" id="sub-holdout">
+        <div class="section-head">
+          <div class="section-tag">03 // SEALED VERIFICATION</div>
+          <h2 class="section-title">Holdout Test & Decision Policy</h2>
+          <div class="section-sub">Evaluated on 1,409 unseen accounts with cost-optimized decision thresholds.</div>
+        </div>
+
+        <div class="holdout-panel">
+          <div class="stat-strip" style="margin-bottom: 40px;">
+            <div class="stat-cell">
+              <div class="stat-label">Holdout Samples</div>
+              <div class="stat-num">1,409</div>
+              <div class="stat-sub">20% Sealed Split</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-label">Holdout ROC-AUC</div>
+              <div class="stat-num">0.8443</div>
+              <div class="stat-sub">Ranking Quality</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-label">Holdout PR-AUC</div>
+              <div class="stat-num">0.6604</div>
+              <div class="stat-sub">2.5x Over Baseline</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-label">Holdout Log Loss</div>
+              <div class="stat-num">0.4171</div>
+              <div class="stat-sub">Calibrated Probability</div>
+            </div>
+          </div>
+
+          <div style="font-size:14px; font-weight:600; color:var(--text-high); margin-bottom:8px;">Operational Cutoff Comparison</div>
+          <div style="font-size:12.5px; color:var(--text-medium); line-height:1.55; margin-bottom:16px;">
+            The optimal 0.312 cutoff captures 78% of departing subscribers with 51% precision, minimizing unnecessary retention credits.
+          </div>
+
+          <table class="policy-table">
+            <thead>
+              <tr>
+                <th>Strategy</th>
+                <th>Cutoff</th>
+                <th>Recall</th>
+                <th>Precision</th>
+                <th>Operational Impact</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Conservative</td>
+                <td style="font-family:var(--font-mono);">0.450</td>
+                <td style="font-family:var(--font-mono);">58%</td>
+                <td style="font-family:var(--font-mono);">68%</td>
+                <td>Targets only high-confidence departing accounts.</td>
+              </tr>
+              <tr class="highlight-policy">
+                <td>Optimal (Recommended)</td>
+                <td style="font-family:var(--font-mono); color:var(--accent-emerald);">0.312</td>
+                <td style="font-family:var(--font-mono); color:var(--accent-emerald);">78%</td>
+                <td style="font-family:var(--font-mono); color:var(--accent-emerald);">51%</td>
+                <td>Catches 78% of departures with lowest overall cost.</td>
+              </tr>
+              <tr>
+                <td>Aggressive</td>
+                <td style="font-family:var(--font-mono);">0.150</td>
+                <td style="font-family:var(--font-mono);">92%</td>
+                <td style="font-family:var(--font-mono);">34%</td>
+                <td>High false alarms; credits awarded to loyal accounts.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ========================================== -->
+      <!-- SUBSECTION 5: 15-RUN EXPERIMENT LEDGER    -->
+      <!-- ========================================== -->
+      <section class="view-subsection" id="sub-ledger">
+        <div class="section-head">
+          <div class="section-tag">04 // AUDIT TRAIL</div>
+          <h2 class="section-title">Experiment Ledger</h2>
+          <div class="section-sub">Parameters and validation metrics across all 15 iterations. Click any row to inspect.</div>
+        </div>
+
+        <div class="ledger-container">
+          <div class="ledger-head-bar">
+            <span style="font-size:13px; font-weight:600; color:var(--text-high);">Experiment Records</span>
+            <span style="font-family:var(--font-mono); font-size:11px; color:var(--text-dim);">15 RUNS</span>
+          </div>
+          <div class="ledger-table-wrap">
+            <table class="ledger-table">
+              <thead>
+                <tr>
+                  <th>Run</th>
+                  <th>Classifier</th>
+                  <th>Depth</th>
+                  <th>LR</th>
+                  <th>L2 Reg</th>
+                  <th>Iters</th>
+                  <th>Val ROC</th>
+                  <th>Val PR</th>
+                  <th>Gap</th>
+                  <th>Takeaway</th>
+                </tr>
+              </thead>
+              <tbody id="ledgerTableBody">
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================== -->
+      <!-- SUBSECTION 6: INTERACTIVE CONSOLE          -->
+      <!-- ========================================== -->
+      <section class="view-subsection" id="sub-agent">
+        <div class="section-head">
+          <div class="section-tag">05 // CONSOLE</div>
+          <h2 class="section-title">Retention Assistant</h2>
+          <div class="section-sub">Query parameters, test holdout metrics, or operational policies.</div>
+        </div>
+
+        <div class="agent-panel">
+          <div class="agent-chat-stream" id="agentChatStream">
+            <div class="agent-bubble ai">
+              Calibration controller online. All runs and holdout metrics loaded. What would you like to review?
+            </div>
+          </div>
+
+          <div class="agent-input-row">
+            <input type="text" class="agent-input" id="agentInput" placeholder="Ask about hyperparameters, tree depth, or holdout results..." onkeypress="if(event.key==='Enter')sendAgentChat()">
+            <button class="linear-btn primary" onclick="sendAgentChat()" style="padding:8px 18px; font-size:11.5px;">Send</button>
+          </div>
+
+          <div class="agent-quick-pills">
+            <button class="pill-btn" onclick="askAgent('Why did the champion win?')">Leading Configuration</button>
+            <button class="pill-btn" onclick="askAgent('Tree Depth comparison')">Tree Depth (6 vs 7)</button>
+            <button class="pill-btn" onclick="askAgent('L2 Regularization Impact')">L2 Regularization</button>
+            <button class="pill-btn" onclick="askAgent('Holdout Test Results')">Holdout Verification</button>
+            <button class="pill-btn" onclick="askAgent('Optimal Decision Threshold')">Optimal Cutoff (0.312)</button>
+          </div>
+        </div>
+      </section>
 
     </main>
 
-    <!-- MINIMAL FOOTER -->
-    <footer class="footer">
-      Autonomous Retention Architecture • Budget-Constrained Calibration
+    <!-- FOOTER -->
+    <footer>
+      Linear-Inspired Architecture • Customer Retention Intelligence Engine
     </footer>
 
   </div>
 
-  <!-- ==================== POPUPS ==================== -->
-
-  <!-- 1. CHURN DYNAMICS POPUP -->
-  <div class="modal-overlay" id="churnModal">
-    <div class="clean-popup">
-      <div class="popup-head">
-        <div class="popup-title">Churn Dynamics</div>
-        <div class="popup-close" onclick="closeModal('churnModal')">✕</div>
-      </div>
-      <div class="popup-body">
-        <div class="grid-duo">
-          <div class="grid-box">
-            <div class="term">Retained</div>
-            <div class="expl">Predictable recurring revenue</div>
-          </div>
-          <div class="grid-box">
-            <div class="term">At-Risk</div>
-            <div class="expl">Early cancellation signals</div>
-          </div>
-        </div>
-
-        <div style="font-size:12px; color:var(--text-muted); line-height:1.6; background:var(--bg-cream); border:1px solid var(--border-warm); border-radius:12px; padding:18px 22px; margin-bottom:24px;">
-          Adjusts positive loss gradients through moderate Sqrt-Balancing, prioritizing minority churn patterns without triggering false retention discounts.
-        </div>
-
-        <div class="researcher-drawer">
-          <div class="drawer-trigger" onclick="toggleDrawer('dr1')">
-            <span>Methodology</span>
-            <span>+</span>
-          </div>
-          <div class="drawer-body" id="dr1">
-            <strong>Weighted Objective:</strong> \(L = -\sum [w_1 y_i \log(p_i) + (1-y_i) \log(1-p_i)]\). Setting \(w_1 \approx 1.68\) elevates precision-recall minority class accuracy without distorting global probability rankings.
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 2. LOOPING ENGINE POPUP -->
-  <div class="modal-overlay" id="loopModal">
-    <div class="clean-popup">
-      <div class="popup-head">
-        <div class="popup-title">Looping Engine</div>
-        <div class="popup-close" onclick="closeModal('loopModal')">✕</div>
-      </div>
-      <div class="popup-body">
-        <div class="tabs-bar">
-          <div class="tab-item active" id="tab1" onclick="switchTab(1)">Performance</div>
-          <div class="tab-item" id="tab2" onclick="switchTab(2)">Tuning Dials</div>
-          <div class="tab-item" id="tab3" onclick="switchTab(3)">Diagnostics</div>
-        </div>
-
-        <!-- Tab 1: Qualitative Performance -->
-        <div class="tab-pane active" id="pane1">
-          <div class="grid-duo">
-            <div class="grid-box">
-              <div class="term">Prevented Churn</div>
-              <div class="expl">Saved recurring revenue</div>
-            </div>
-            <div class="grid-box">
-              <div class="term">False Alarms</div>
-              <div class="expl">Unnecessary retention cost</div>
-            </div>
-            <div class="grid-box">
-              <div class="term">Missed Churn</div>
-              <div class="expl">Unwarned customer exit</div>
-            </div>
-            <div class="grid-box">
-              <div class="term">Stable Base</div>
-              <div class="expl">Satisfied account segment</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Tab 2: Structural Dials -->
-        <div class="tab-pane" id="pane2">
-          <div class="grid-duo">
-            <div class="grid-box">
-              <div class="term">Tree Depth</div>
-              <div class="expl">Controls leaf capacity</div>
-            </div>
-            <div class="grid-box">
-              <div class="term">Learning Rate</div>
-              <div class="expl">Step contributions</div>
-            </div>
-            <div class="grid-box">
-              <div class="term">Regularization</div>
-              <div class="expl">Smooths leaf logits</div>
-            </div>
-            <div class="grid-box">
-              <div class="term">Subsampling</div>
-              <div class="expl">Reduces collinear variance</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Tab 3: Model Diagnostics -->
-        <div class="tab-pane" id="pane3">
-          <div style="font-size:12px; color:var(--text-muted); line-height:1.6; background:var(--bg-cream); border:1px solid var(--border-warm); border-radius:12px; padding:18px 22px; margin-bottom:24px;">
-            Sequentially builds oblivious decision trees, shrinking depth and increasing L2 penalties to prevent leaf-level memorization on noisy validation rows.
-          </div>
-        </div>
-
-        <div class="researcher-drawer">
-          <div class="drawer-trigger" onclick="toggleDrawer('dr2')">
-            <span>Architecture</span>
-            <span>+</span>
-          </div>
-          <div class="drawer-body" id="dr2">
-            <strong>Target Statistics:</strong> \(TS_k = \frac{\text{Count}_{prior}(y=1) + a \cdot P}{\text{Count}_{prior} + a}\) computed along row permutations \(\sigma\) avoids target leakage. Convergence brake terminates iterations when \(\Delta < 0.0010\).
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 3. DATASET MODAL -->
-  <div class="modal-overlay" id="datasetModal">
-    <div class="clean-popup">
-      <div class="popup-head">
-        <div class="popup-title">Datasets</div>
-        <div class="popup-close" onclick="closeModal('datasetModal')">✕</div>
-      </div>
-      <div class="popup-body">
-        <div style="font-size:13px; color:var(--text-main); font-weight:600; margin-bottom:6px;">Connected Repository</div>
-        <div style="font-size:12px; color:var(--text-muted); margin-bottom:24px;">IBM Telco Customer Churn • Stratified Validation Split</div>
-
-        <div style="margin-bottom:24px;">
-          <div style="font-size:12px; font-weight:600; color:var(--text-main); margin-bottom:8px;">Link External Source URL:</div>
-          <div style="display:flex; gap:10px;">
-            <input type="text" placeholder="https://domain.com/churn_data.csv" style="flex:1; padding:10px 14px; border:1px solid var(--border-warm); border-radius:8px; font-size:12.5px; outline:none; background:var(--bg-cream); font-family:var(--font-sans);">
-            <button class="nav-btn primary" onclick="linkDataSuccess()">Connect</button>
-          </div>
-        </div>
-
-        <div style="font-size:12px; color:var(--text-muted); background:var(--bg-cream); border:1px solid var(--border-warm); border-radius:12px; padding:16px 20px; line-height:1.6;">
-          Feature engineering (Spend Surge Ratio, Lock-In Index, High-Risk Flags) is prepared at zero model training cost.
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 4. RESEARCHERS TECHNICAL SPECIFICATION MODAL -->
-  <div class="modal-overlay" id="researchersModal">
-    <div class="clean-popup" style="max-width: 640px;">
-      <div class="popup-head">
-        <div class="popup-title">Research Archive</div>
-        <div class="popup-close" onclick="closeModal('researchersModal')">✕</div>
-      </div>
-      <div class="popup-body">
-        <div style="display:flex; flex-direction:column; gap:18px; font-size:12px; color:var(--text-muted); line-height:1.65;">
-          <div style="background:var(--bg-cream); border:1px solid var(--border-warm); border-radius:12px; padding:18px 22px;">
-            <strong style="color:var(--text-main);">1. Evaluation & Budget Constraint:</strong><br>
-            Constrained to a maximum 15 fit cycles. Final placement is governed by \(\text{Score} = \text{ROC-AUC} \times \text{Efficiency Factor}\), penalizing unnecessary brute-force fits.
-          </div>
-          <div style="background:var(--bg-cream); border:1px solid var(--border-warm); border-radius:12px; padding:18px 22px;">
-            <strong style="color:var(--text-main);">2. Ordered Target Encoding:</strong><br>
-            Symmetric oblivious trees compute statistics strictly on prior rows \(\sigma(j) < \sigma(k)\), eliminating category memorization.
-          </div>
-          <div style="background:var(--bg-cream); border:1px solid var(--border-warm); border-radius:12px; padding:18px 22px;">
-            <strong style="color:var(--text-main);">3. Zero-Cost Probability Ensembling:</strong><br>
-            Post-loop blending of stored probability vectors costs 0 additional training calls: \(0.60 \times \text{CatBoost} + 0.25 \times \text{LightGBM} + 0.15 \times \text{XGBoost}\).
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <!-- SCRIPT -->
   <script>
-    let step = 3;
+    // Dynamic run dataset supporting multiple classifier families
+    const experimentData = [
+      { run_id: 1, model: "CatBoost", depth: 6, lr: 0.05, l2: 3.0, iters: 1000, bag: 0.2, roc: 0.8505, pr: 0.6674, loss: 0.4100, gap: 0.0414, takeaway: "Balanced bias-variance trade-off." },
+      { run_id: 2, model: "CatBoost", depth: 7, lr: 0.03, l2: 5.0, iters: 2000, bag: 0.5, roc: 0.8493, pr: 0.6678, loss: 0.4110, gap: 0.0429, takeaway: "Slight leaf overfitting on boundary noise." },
+      { run_id: 3, model: "LightGBM", depth: 6, lr: 0.04, l2: 3.0, iters: 1500, bag: 0.5, roc: 0.8494, pr: 0.6640, loss: 0.4281, gap: 0.0541, takeaway: "Higher bagging noise degraded loss." },
+      { run_id: 4, model: "CatBoost", depth: 6, lr: 0.03, l2: 3.0, iters: 2500, bag: 0.5, roc: 0.8500, pr: 0.6666, loss: 0.4816, gap: 0.0356, takeaway: "Extra iterations saturated early." },
+      { run_id: 5, model: "CatBoost", depth: 5, lr: 0.025, l2: 5.0, iters: 3000, bag: 0.5, roc: 0.8498, pr: 0.6656, loss: 0.4110, gap: 0.0295, takeaway: "Narrowed generalization gap." },
+      { run_id: 6, model: "LightGBM", depth: 6, lr: 0.03, l2: 4.0, iters: 2000, bag: 0.5, roc: 0.8493, pr: 0.6669, loss: 0.4113, gap: 0.0319, takeaway: "Moderate leaf regularization." },
+      { run_id: 7, model: "CatBoost", depth: 5, lr: 0.025, l2: 6.0, iters: 3000, bag: 0.2, roc: 0.8498, pr: 0.6639, loss: 0.4814, gap: 0.0369, takeaway: "Low variance gradient updates." },
+      { run_id: 8, model: "XGBoost", depth: 5, lr: 0.03, l2: 5.0, iters: 2000, bag: 0.2, roc: 0.8500, pr: 0.6646, loss: 0.4109, gap: 0.0236, takeaway: "Balanced mid-tier profile." },
+      { run_id: 9, model: "CatBoost", depth: 4, lr: 0.02, l2: 10.0, iters: 3000, bag: 0.2, roc: 0.8496, pr: 0.6656, loss: 0.4111, gap: 0.0249, takeaway: "Underfitting subtle interaction terms." },
+      { run_id: 10, model: "CatBoost", depth: 6, lr: 0.045, l2: 4.5, iters: 2000, bag: 0.2, roc: 0.8497, pr: 0.6653, loss: 0.4110, gap: 0.0329, takeaway: "Solid ranking reliability." },
+      { run_id: 11, model: "CatBoost", depth: 5, lr: 0.025, l2: 8.0, iters: 3000, bag: 0.2, roc: 0.8503, pr: 0.6669, loss: 0.4103, gap: 0.0240, takeaway: "Strong runner-up configuration." },
+      { run_id: 12, model: "LightGBM", depth: 4, lr: 0.02, l2: 12.0, iters: 3000, bag: 0.5, roc: 0.8493, pr: 0.6648, loss: 0.4115, gap: 0.0183, takeaway: "Heavy L2 regularized minority signals." },
+      { run_id: 13, model: "CatBoost", depth: 5, lr: 0.02, l2: 10.0, iters: 3000, bag: 0.2, roc: 0.8504, pr: 0.6643, loss: 0.4815, gap: 0.0291, takeaway: "High ranking with clean generalization." },
+      { run_id: 14, model: "Ensemble", depth: 6, lr: 0.02, l2: 7.0, iters: 3000, bag: 0.3, roc: 0.8500, pr: 0.6660, loss: 0.4108, gap: 0.0309, takeaway: "Blended probability calibration." },
+      { run_id: 15, model: "CatBoost", depth: 5, lr: 0.015, l2: 15.0, iters: 3000, bag: 0.5, roc: 0.8504, pr: 0.6653, loss: 0.4818, gap: 0.0270, takeaway: "Search concluded at convergence boundary." }
+    ];
 
-    function sendChat() {
-      const input = document.getElementById("chatInput");
+    // Dynamically identify champion by highest ROC-AUC
+    function getChampion() {
+      return experimentData.reduce((prev, curr) => (curr.roc > prev.roc ? curr : prev), experimentData[0]);
+    }
+
+    let currentStepIndex = 1;
+
+    window.addEventListener("DOMContentLoaded", () => {
+      const champ = getChampion();
+      document.getElementById("statBestModel").textContent = champ.model;
+      document.getElementById("statBestRun").textContent = `Run #${champ.run_id} (Champion)`;
+      document.getElementById("statTopVal").textContent = champ.roc.toFixed(4);
+
+      renderLedgerTable();
+      populateParamSelect();
+      renderParamComparison();
+      initLinearCharts();
+    });
+
+    function switchView(tabKey) {
+      document.querySelectorAll(".sub-tab").forEach(tab => {
+        tab.classList.toggle("active", tab.id === `tab-${tabKey}`);
+      });
+      document.querySelectorAll(".view-subsection").forEach(sec => {
+        sec.classList.toggle("active", sec.id === `sub-${tabKey}`);
+      });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function stepRun() {
+      currentStepIndex = (currentStepIndex % experimentData.length) + 1;
+      document.getElementById("stepActionText").textContent = `Step Run (${currentStepIndex}/${experimentData.length})`;
+      
+      const select = document.getElementById("paramSelect");
+      if (select) {
+        const champ = getChampion();
+        select.value = currentStepIndex === champ.run_id ? (champ.run_id === 1 ? 2 : 1) : currentStepIndex;
+        renderParamComparison();
+      }
+      switchView('params');
+    }
+
+    function populateParamSelect() {
+      const select = document.getElementById("paramSelect");
+      if (!select) return;
+      select.innerHTML = "";
+      const champ = getChampion();
+      experimentData.forEach(e => {
+        if (e.run_id !== champ.run_id) {
+          const opt = document.createElement("option");
+          opt.value = e.run_id;
+          opt.textContent = `Run #${e.run_id} (${e.model}) — Depth ${e.depth}, LR ${e.lr}, L2 ${e.l2}`;
+          select.appendChild(opt);
+        }
+      });
+    }
+
+    function renderParamComparison() {
+      const champ = getChampion();
+      const select = document.getElementById("paramSelect");
+      const targetId = parseInt(select ? select.value : (champ.run_id === 1 ? 2 : 1), 10);
+      const target = experimentData.find(e => e.run_id === targetId) || experimentData[1];
+
+      const wrap = document.getElementById("paramsComparisonWrap");
+      if (!wrap) return;
+
+      wrap.innerHTML = `
+        <div class="param-box champion">
+          <div class="param-box-head">
+            <div>
+              <div style="font-size:14px; font-weight:600; color:var(--text-high);">Champion: ${champ.model}</div>
+              <div style="font-size:11.5px; color:var(--text-medium); margin-top:2px;">Run #${champ.run_id} • Top Evaluated</div>
+            </div>
+            <span class="param-pill champ">CHAMPION</span>
+          </div>
+          <div class="param-spec-row"><span class="spec-key">Model Family</span><span class="spec-val">${champ.model}</span></div>
+          <div class="param-spec-row"><span class="spec-key">Tree Depth / Leaves</span><span class="spec-val">${champ.depth}</span></div>
+          <div class="param-spec-row"><span class="spec-key">Learning Rate</span><span class="spec-val">${champ.lr}</span></div>
+          <div class="param-spec-row"><span class="spec-key">L2 Regularization</span><span class="spec-val">${champ.l2}</span></div>
+          <div class="param-spec-row"><span class="spec-key">Iterations</span><span class="spec-val">${champ.iters}</span></div>
+          <div class="param-spec-row"><span class="spec-key">Bagging Temp</span><span class="spec-val">${champ.bag}</span></div>
+          <div class="param-spec-row"><span class="spec-key">Validation ROC-AUC</span><span class="spec-val" style="color:var(--accent-emerald); font-weight:600;">${champ.roc.toFixed(4)}</span></div>
+          <div class="param-spec-row"><span class="spec-key">Validation PR-AUC</span><span class="spec-val">${champ.pr.toFixed(4)}</span></div>
+          <div class="param-spec-row"><span class="spec-key">Generalization Gap</span><span class="spec-val">${champ.gap.toFixed(4)}</span></div>
+        </div>
+
+        <div class="param-box">
+          <div class="param-box-head">
+            <div>
+              <div style="font-size:14px; font-weight:600; color:var(--text-high);">Contender: ${target.model}</div>
+              <div style="font-size:11.5px; color:var(--text-medium); margin-top:2px;">Run #${target.run_id} • Comparison Trial</div>
+            </div>
+            <span class="param-pill trial">TRIAL</span>
+          </div>
+          <div class="param-spec-row"><span class="spec-key">Model Family</span><span class="spec-val">${target.model}</span></div>
+          <div class="param-spec-row"><span class="spec-key">Tree Depth / Leaves</span><span class="spec-val">${target.depth}</span></div>
+          <div class="param-spec-row"><span class="spec-key">Learning Rate</span><span class="spec-val">${target.lr}</span></div>
+          <div class="param-spec-row"><span class="spec-key">L2 Regularization</span><span class="spec-val">${target.l2}</span></div>
+          <div class="param-spec-row"><span class="spec-key">Iterations</span><span class="spec-val">${target.iters}</span></div>
+          <div class="param-spec-row"><span class="spec-key">Bagging Temp</span><span class="spec-val">${target.bag}</span></div>
+          <div class="param-spec-row"><span class="spec-key">Validation ROC-AUC</span><span class="spec-val">${target.roc.toFixed(4)}</span></div>
+          <div class="param-spec-row"><span class="spec-key">Validation PR-AUC</span><span class="spec-val">${target.pr.toFixed(4)}</span></div>
+          <div class="param-spec-row"><span class="spec-key">Generalization Gap</span><span class="spec-val">${target.gap.toFixed(4)}</span></div>
+        </div>
+      `;
+    }
+
+    function renderLedgerTable() {
+      const tbody = document.getElementById("ledgerTableBody");
+      if (!tbody) return;
+      tbody.innerHTML = "";
+      const champ = getChampion();
+
+      experimentData.forEach(e => {
+        const isChamp = (e.run_id === champ.run_id);
+        const tr = document.createElement("tr");
+        if (isChamp) tr.className = "champ-row";
+        tr.onclick = () => {
+          const select = document.getElementById("paramSelect");
+          if (select) {
+            select.value = isChamp ? (champ.run_id === 1 ? 2 : 1) : e.run_id;
+            renderParamComparison();
+          }
+          switchView('params');
+        };
+
+        tr.innerHTML = `
+          <td><strong>#${e.run_id}</strong> ${isChamp ? '<span style="font-size:9.5px; background:var(--accent-emerald-dim); color:var(--accent-emerald); border:1px solid rgba(78, 190, 158, 0.3); padding:2px 5px; border-radius:4px; margin-left:6px;">BEST</span>' : ''}</td>
+          <td><span style="color:var(--text-high); font-family:var(--font-sans);">${e.model}</span></td>
+          <td>${e.depth}</td>
+          <td>${e.lr}</td>
+          <td>${e.l2}</td>
+          <td>${e.iters}</td>
+          <td><strong style="color:var(--text-high);">${e.roc.toFixed(4)}</strong></td>
+          <td>${e.pr.toFixed(4)}</td>
+          <td>${e.gap.toFixed(4)}</td>
+          <td style="font-family:var(--font-sans); font-size:11px; color:var(--text-medium); max-width:240px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${e.takeaway}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function initLinearCharts() {
+      Chart.defaults.font.family = "'Plus Jakarta Sans', sans-serif";
+      Chart.defaults.font.size = 11;
+      Chart.defaults.color = "#8A8F98";
+      const champ = getChampion();
+
+      // 1. Trajectory Chart
+      const trajCanvas = document.getElementById("linearTrajChart");
+      if (trajCanvas) {
+        new Chart(trajCanvas.getContext("2d"), {
+          type: 'line',
+          data: {
+            labels: experimentData.map(e => `#${e.run_id}`),
+            datasets: [
+              {
+                label: 'Val ROC-AUC',
+                data: experimentData.map(e => e.roc),
+                borderColor: '#F7F8F8',
+                backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                borderWidth: 1.8,
+                pointBackgroundColor: experimentData.map(e => e.run_id === champ.run_id ? '#4EBE9E' : '#15171A'),
+                pointBorderColor: experimentData.map(e => e.run_id === champ.run_id ? '#4EBE9E' : '#8A8F98'),
+                pointRadius: experimentData.map(e => e.run_id === champ.run_id ? 5 : 2.5),
+                tension: 0.2,
+                fill: true
+              },
+              {
+                label: 'Val PR-AUC',
+                data: experimentData.map(e => e.pr),
+                borderColor: '#5E6AD2',
+                borderWidth: 1.5,
+                borderDash: [3, 3],
+                pointRadius: 2,
+                tension: 0.2,
+                fill: false
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                position: 'top',
+                align: 'end',
+                labels: { boxWidth: 10, font: { size: 10 }, color: '#8A8F98' }
+              },
+              tooltip: {
+                backgroundColor: '#15171A',
+                titleColor: '#F7F8F8',
+                bodyColor: '#8A8F98',
+                borderColor: 'rgba(255, 255, 255, 0.1)',
+                borderWidth: 1,
+                padding: 10,
+                cornerRadius: 6
+              }
+            },
+            scales: {
+              x: { grid: { display: false }, ticks: { color: '#545861' } },
+              y: {
+                min: 0.65,
+                max: 0.86,
+                grid: { color: 'rgba(255, 255, 255, 0.04)' },
+                ticks: { color: '#545861' }
+              }
+            }
+          }
+        });
+      }
+
+      // 2. Holdout Benchmark Chart
+      const holdoutCanvas = document.getElementById("linearHoldoutChart");
+      if (holdoutCanvas) {
+        new Chart(holdoutCanvas.getContext("2d"), {
+          type: 'bar',
+          data: {
+            labels: ['ROC-AUC', 'PR-AUC', 'Log Loss'],
+            datasets: [
+              {
+                label: '5-Fold CV',
+                data: [0.8505, 0.6674, 0.4100],
+                backgroundColor: 'rgba(255, 255, 255, 0.14)',
+                borderRadius: 4,
+                barPercentage: 0.55
+              },
+              {
+                label: 'Sealed Holdout',
+                data: [0.8443, 0.6604, 0.4171],
+                backgroundColor: 'rgba(94, 106, 210, 0.4)',
+                borderRadius: 4,
+                barPercentage: 0.55
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                position: 'top',
+                align: 'end',
+                labels: { boxWidth: 10, font: { size: 10 }, color: '#8A8F98' }
+              }
+            },
+            scales: {
+              x: { grid: { display: false }, ticks: { color: '#8A8F98' } },
+              y: {
+                min: 0.35,
+                max: 0.90,
+                grid: { color: 'rgba(255, 255, 255, 0.04)' },
+                ticks: { color: '#545861' }
+              }
+            }
+          }
+        });
+      }
+    }
+
+    async function sendAgentChat() {
+      const input = document.getElementById("agentInput");
       const val = input.value.trim();
       if (!val) return;
       input.value = "";
-      addMsg("user", val);
+      addAgentMsg("user", val);
+
+      try {
+        const res = await fetch("/api/llm-consult", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: val })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.reply) {
+            addAgentMsg("ai", data.reply);
+            return;
+          }
+        }
+      } catch (e) {}
 
       setTimeout(() => {
-        let text = "Analyzing retention indicators and model boundaries across customer segments.";
+        let text = "Model ranking verified at 0.8505 Validation ROC-AUC and 0.8443 on the 1,409 sealed holdout rows.";
         const low = val.toLowerCase();
-        if (low.includes("churn") || low.includes("customer")) {
-          text = "CatBoost identifies early churn signals through ordered target statistics.";
-        } else if (low.includes("catboost") || low.includes("tree")) {
-          text = "CatBoost constructs symmetric trees to optimize retention without overfitting.";
-        } else if (low.includes("loop")) {
-          text = "The engine runs iterative calibrations and halts upon reaching convergence.";
-        } else if (low.includes("dataset") || low.includes("link")) {
-          text = "Custom CSV datasets can be connected via the Dataset button at the top.";
+        if (low.includes("depth") || low.includes("tree")) {
+          text = "Depth 6 provides the optimal bias-variance balance. Deeper configurations risk noise memorization, while shallower trees miss multi-attribute interactions.";
+        } else if (low.includes("regularization") || low.includes("l2")) {
+          text = "L2 Regularization: Testing up to 15.0 narrowed the gap to 0.018, but over-shrank minority signals. L2=3.0 remains optimal.";
+        } else if (low.includes("holdout") || low.includes("test")) {
+          text = "Holdout Verification: 1,409 unseen accounts evaluated with 0.8443 ROC-AUC, confirming out-of-sample stability.";
+        } else if (low.includes("threshold") || low.includes("decision") || low.includes("cutoff")) {
+          text = "Optimal Cutoff: Setting the decision threshold at 0.312 captures 78% of departing subscribers with 51% precision.";
         }
-        addMsg("ai", text);
-      }, 300);
+        addAgentMsg("ai", text);
+      }, 180);
     }
 
-    function addMsg(cls, text) {
-      const scroll = document.getElementById("chatScroll");
+    function addAgentMsg(cls, text) {
+      const stream = document.getElementById("agentChatStream");
       const div = document.createElement("div");
-      div.className = `bubble ${cls}`;
+      div.className = `agent-bubble ${cls}`;
       div.textContent = text;
-      scroll.appendChild(div);
-      scroll.scrollTop = scroll.scrollHeight;
+      stream.appendChild(div);
+      stream.scrollTop = stream.scrollHeight;
     }
 
-    function askChip(q) {
-      addMsg("user", q);
-      setTimeout(() => {
-        const low = q.toLowerCase();
-        if (low.includes("churn") || low.includes("catboost")) {
-          openChurnModal();
-          addMsg("ai", "Displaying Churn Dynamics.");
-        } else if (low.includes("loop")) {
-          openLoopModal();
-          addMsg("ai", "Displaying Looping Engine.");
-        } else if (low.includes("data")) {
-          openDatasetModal();
-          addMsg("ai", "Displaying Datasets panel.");
-        } else {
-          addMsg("ai", "The autonomous brake halts iterations when validation improvements fall below 0.0010.");
-        }
-      }, 250);
+    function askAgent(q) {
+      document.getElementById("agentInput").value = q;
+      sendAgentChat();
     }
-
-    function runLoopStep() {
-      step = (step % 5) + 1;
-      for (let i = 1; i <= 5; i++) {
-        const dot = document.getElementById(`w${i}`);
-        if (dot) dot.classList.toggle("active", i === step);
-      }
-      addMsg("ai", "Execution step complete. Decision boundary calibrated.");
-      openLoopModal();
-    }
-
-    function switchTab(n) {
-      document.querySelectorAll(".tab-item").forEach((b, i) => b.classList.toggle("active", i + 1 === n));
-      document.querySelectorAll(".tab-pane").forEach((p, i) => p.classList.toggle("active", i + 1 === n));
-    }
-
-    function toggleDrawer(id) {
-      const d = document.getElementById(id);
-      if (d) d.classList.toggle("open");
-    }
-
-    function linkDataSuccess() {
-      alert("Dataset source connected. Zero-cost feature prep verified.");
-      closeModal("datasetModal");
-    }
-
-    function openChurnModal() { openModal("churnModal"); }
-    function openLoopModal() { openModal("loopModal"); }
-    function openDatasetModal() { openModal("datasetModal"); }
-    function openResearchersModal() { openModal("researchersModal"); }
-
-    function openModal(id) { document.getElementById(id).classList.add("open"); }
-    function closeModal(id) { document.getElementById(id).classList.remove("open"); }
-
-    window.addEventListener("click", (e) => {
-      if (e.target.classList.contains("modal-overlay")) {
-        e.target.classList.remove("open");
-      }
-    });
   </script>
 </body>
 </html>
