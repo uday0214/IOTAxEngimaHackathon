@@ -268,6 +268,7 @@ class ExtensiveTelemetryCollector:
 
             time_series.append({
                 "experiment_id": exp_id,
+                "model_family": str(hyp.get("model_family", "catboost")),
                 "oof_roc_auc": auc,
                 "oof_pr_auc": float(metrics.get("oof_pr_auc", 0.0)),
                 "oof_log_loss": float(metrics.get("oof_log_loss", 0.0)),

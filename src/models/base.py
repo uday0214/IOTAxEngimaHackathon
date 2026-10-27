@@ -75,3 +75,24 @@ class BaseModel(ABC):
     ) -> ExperimentTelemetry:
         """Executes n-fold stratified cross-validation and records extensive telemetry."""
         pass
+
+    @abstractmethod
+    def fit_final(self, X: pd.DataFrame, y: pd.Series, random_seed: int = 42) -> Any:
+        """Fits a final champion model on the entire dataset."""
+        pass
+
+    @abstractmethod
+    def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
+        """Generates class probability predictions."""
+        pass
+
+    @abstractmethod
+    def save_model(self, path: Any) -> Any:
+        """Saves champion model to disk."""
+        pass
+
+    @classmethod
+    @abstractmethod
+    def load_model(cls, path: Any, config: Optional[Any] = None) -> "BaseModel":
+        """Loads a persisted model from disk."""
+        pass

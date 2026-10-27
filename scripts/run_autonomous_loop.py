@@ -89,10 +89,22 @@ def main():
         action="store_true",
         help="Enable Google Colab environment integration (auto-mount Google Drive if available)",
     )
+    parser.add_argument(
+        "--tournament-models",
+        type=str,
+        default="catboost,lightgbm,xgboost,random_forest,logistic_regression",
+        help="Comma-separated list of candidate models for initial tournament exploration",
+    )
+    parser.add_argument(
+        "--no-tournament",
+        action="store_true",
+        help="Disable multi-model tournament phase and train CatBoost exclusively",
+    )
     args = parser.parse_args()
 
-    # Determine live execution flag
+    # Determine live execution flag and tournament candidates
     execute_live = False if args.simulate else True
+    tournament_candidates = None if args.no_tournament else [m.strip().lower() for m in args.tournament_models.split(",") if m.strip()]
 
     # Environmental Telemetry & Google Colab Integration
     sys_info = get_system_info()
@@ -122,12 +134,13 @@ def main():
         active_device,
     )
 
-    # Initialize Orchestrator Loop with CatBoost
+    # Initialize Orchestrator Loop with Multi-Model Tournament Support
     orchestrator = AutonomousExperimentLoop(
         max_runs=args.max_runs,
         ledger_path=ledger_path,
         execute_live_training=execute_live,
         device=active_device,
+        tournament_candidates=tournament_candidates,
     )
 
     # Load canonical or sample dataset

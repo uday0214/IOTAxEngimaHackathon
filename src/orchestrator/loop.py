@@ -19,11 +19,105 @@ from src.features.pipeline import DynamicFeaturePipeline
 from src.optuna_tpe.sampler_bridge import OptunaSamplerBridge
 from src.telemetry.collector import ExtensiveTelemetryCollector
 from src.telemetry.ledger import ExperimentLedger
-from src.models.base import ExperimentTelemetry
+from src.models.base import BaseModel, ExperimentTelemetry
 from src.models.catboost_model import CatBoostPipelineModel
+from src.models.factory import get_model_class, create_model, load_champion_model
 from src.utils.environment import get_device
 
 logger = logging.getLogger(__name__)
+
+
+def get_tournament_baseline_decision(exp_id: int, model_family: str) -> SupervisorDecision:
+    """Constructs standardized baseline exploration decision for a tournament candidate model."""
+    normalized = model_family.lower().strip()
+    if normalized == "catboost":
+        return SupervisorDecision(
+            experiment_id=exp_id,
+            hypothesis="Tournament Phase: Benchmark CatBoost oblivious symmetric trees with ordered target statistics.",
+            mathematical_justification="Candidate in tournament: Evaluating oblivious decision tree inductive bias on 80% categorical Telco dataset.",
+            hyperparameters=HyperparameterConfig(
+                model_family="catboost",
+                depth=6,
+                learning_rate=0.05,
+                l2_leaf_reg=3.0,
+                iterations=1000,
+            ),
+            feature_config=FeatureEngineeringConfig(),
+            expected_outcome="Establish CatBoost baseline OOF ROC-AUC and PR-AUC.",
+        )
+    elif normalized == "lightgbm":
+        return SupervisorDecision(
+            experiment_id=exp_id,
+            hypothesis="Tournament Phase: Benchmark LightGBM histogram-based leaf-wise gradient boosting.",
+            mathematical_justification="Candidate in tournament: Testing leaf-wise gradient boosting with native categorical binning and histogram optimization.",
+            hyperparameters=HyperparameterConfig(
+                model_family="lightgbm",
+                depth=6,
+                learning_rate=0.05,
+                l2_leaf_reg=3.0,
+                iterations=1000,
+                subsample=0.8,
+                colsample_bytree=0.8,
+            ),
+            feature_config=FeatureEngineeringConfig(),
+            expected_outcome="Evaluate LightGBM gradient boosting performance and generalization speed.",
+        )
+    elif normalized == "xgboost":
+        return SupervisorDecision(
+            experiment_id=exp_id,
+            hypothesis="Tournament Phase: Benchmark XGBoost second-order Taylor expansion tree boosting.",
+            mathematical_justification="Candidate in tournament: Testing exact second-order gradient statistics and histogram categorical binning.",
+            hyperparameters=HyperparameterConfig(
+                model_family="xgboost",
+                depth=6,
+                learning_rate=0.05,
+                l2_leaf_reg=3.0,
+                iterations=1000,
+                subsample=0.8,
+                colsample_bytree=0.8,
+            ),
+            feature_config=FeatureEngineeringConfig(),
+            expected_outcome="Evaluate XGBoost regularization and OOF discrimination capability.",
+        )
+    elif normalized == "random_forest":
+        return SupervisorDecision(
+            experiment_id=exp_id,
+            hypothesis="Tournament Phase: Benchmark Random Forest bagging ensemble with unpruned decorrelated trees.",
+            mathematical_justification="Candidate in tournament: Testing bagging variance reduction over one-hot encoded feature representations.",
+            hyperparameters=HyperparameterConfig(
+                model_family="random_forest",
+                depth=8,
+                iterations=300,
+                min_samples_split=2,
+                min_samples_leaf=1,
+            ),
+            feature_config=FeatureEngineeringConfig(),
+            expected_outcome="Evaluate whether bagging provides superior resilience against tabular variance.",
+        )
+    elif normalized == "logistic_regression":
+        return SupervisorDecision(
+            experiment_id=exp_id,
+            hypothesis="Tournament Phase: Benchmark L2-regularized Logistic Regression linear model.",
+            mathematical_justification="Candidate in tournament: Establishing linear decision boundary lower bound with standardized numeric scaling.",
+            hyperparameters=HyperparameterConfig(
+                model_family="logistic_regression",
+                C=1.0,
+                penalty="l2",
+                solver="lbfgs",
+                iterations=100,
+            ),
+            feature_config=FeatureEngineeringConfig(),
+            expected_outcome="Establish linear parametric baseline for customer churn log-odds.",
+        )
+    else:
+        return SupervisorDecision(
+            experiment_id=exp_id,
+            hypothesis=f"Tournament Phase: Baseline probing for {model_family}.",
+            mathematical_justification=f"Evaluating inductive bias of {model_family}.",
+            hyperparameters=HyperparameterConfig(model_family=model_family),
+            feature_config=FeatureEngineeringConfig(),
+            expected_outcome=f"Evaluate {model_family} performance.",
+        )
 
 
 class AutonomousExperimentLoop:
@@ -39,6 +133,7 @@ class AutonomousExperimentLoop:
         execute_live_training: bool = True,
         device: str = "auto",
         model_cls: type = CatBoostPipelineModel,
+        tournament_candidates: Optional[List[str]] = None,
     ):
         """
         Args:
@@ -47,10 +142,11 @@ class AutonomousExperimentLoop:
             manifest_path: Path to dataset cryptographic manifest.
             canonical_path: Path to verified train_val dataset partition.
             telemetry_dir: Directory where detailed per-experiment telemetry JSONs are saved.
-            execute_live_training: If True, invokes actual CatBoost training;
+            execute_live_training: If True, invokes actual model training;
                                   If False, runs simulated telemetry (enables dry-run testing).
             device: Target hardware device ('auto', 'cpu', 'gpu').
             model_cls: Concrete classifier pipeline model class (defaults to CatBoostPipelineModel).
+            tournament_candidates: List of candidate model families to explore during initial tournament phase.
         """
         self.max_runs = max_runs
         self.telemetry_dir = Path(telemetry_dir)
@@ -58,7 +154,18 @@ class AutonomousExperimentLoop:
         self.execute_live_training = execute_live_training
         self.device = get_device(device)
         self.model_cls = model_cls
-        self.champion_pipeline_model: Optional[CatBoostPipelineModel] = None
+        self.champion_pipeline_model: Optional[BaseModel] = None
+
+        # Multi-model tournament settings
+        self.tournament_candidates = tournament_candidates if tournament_candidates is not None else [
+            "catboost",
+            "lightgbm",
+            "xgboost",
+            "random_forest",
+            "logistic_regression",
+        ]
+        self.winning_family: Optional[str] = None
+        self.tournament_leaderboard: List[Dict[str, Any]] = []
 
         # Core System Components
         self.budget_guard = BudgetGuard(ledger_path=ledger_path, max_experiments=max_runs)
@@ -74,12 +181,12 @@ class AutonomousExperimentLoop:
         self.locked_classifier: Optional[ClassifierLockDecision] = None
 
     def run_pre_flight(self, train_val_df: pd.DataFrame) -> ClassifierLockDecision:
-        """Step 0: Profiles dataset and locks best classifier with ZERO experiment cost."""
+        """Step 0: Profiles dataset and locks baseline recommendations with ZERO experiment cost."""
         logger.info("=== PRE-FLIGHT PHASE: Profiling Dataset (Budget Cost: 0) ===")
         meta = self.profiler.extract_meta_features(train_val_df, target_col="Churn")
         self.locked_classifier = self.profiler.select_and_lock_classifier(meta)
         logger.info(
-            "Classifier Selection Locked: '%s' (Fit Score: %.2f) | Rationale: %s",
+            "Classifier Selection Recommendations: '%s' (Fit Score: %.2f) | Rationale: %s",
             self.locked_classifier.selected_family,
             self.locked_classifier.inductive_bias_fit_score,
             self.locked_classifier.rationale,
@@ -117,22 +224,26 @@ class AutonomousExperimentLoop:
             update={k: v for k, v in sampled_params.items() if hasattr(decision.hyperparameters, k)}
         )
 
-        # 5. Fit & Validation Execution
+        # 5. Dynamic Model Family Resolution and Fit Execution
+        target_family = effective_hyperparameters.model_family
+        active_model_cls = get_model_class(target_family)
+
         if self.execute_live_training:
             logger.info(
-                "Live Training: Fitting %s 5-fold CV for Experiment %d (device: %s)...",
-                self.model_cls.__name__,
+                "Live Training: Fitting %s (%s) 5-fold CV for Experiment %d (device: %s)...",
+                active_model_cls.__name__,
+                target_family,
                 experiment_id,
                 self.device,
             )
-            model = self.model_cls(
+            model = active_model_cls(
                 config=effective_hyperparameters,
                 experiment_id=experiment_id,
                 device=self.device,
             )
             telemetry = model.cross_validate(X, y, n_splits=5)
         else:
-            logger.info("Loop Simulation Mode: Simulating telemetry for Experiment %d...", experiment_id)
+            logger.info("Loop Simulation Mode: Simulating telemetry for Experiment %d (%s)...", experiment_id, target_family)
             telemetry = self._simulate_telemetry(experiment_id, decision)
 
         # 6. Inform Optuna study of result
@@ -141,6 +252,7 @@ class AutonomousExperimentLoop:
         # 7. Convert telemetry to comprehensive diagnostic dictionary
         telemetry_dict = {
             "experiment_id": experiment_id,
+            "model_family": target_family,
             "oof_roc_auc": telemetry.oof_roc_auc,
             "oof_pr_auc": telemetry.oof_pr_auc,
             "oof_log_loss": telemetry.oof_log_loss,
@@ -198,8 +310,9 @@ class AutonomousExperimentLoop:
         }
         self.ledger.append_run(entry)
         logger.info(
-            "--> Run %d/15 Completed: ROC-AUC=%.5f | PR-AUC=%.5f | LogLoss=%.4f | Gap=%.4f (Omega=%.2f%%)",
+            "--> Run %d/15 (%s) Completed: ROC-AUC=%.5f | PR-AUC=%.5f | LogLoss=%.4f | Gap=%.4f (Omega=%.2f%%)",
             experiment_id,
+            target_family.upper(),
             telemetry.oof_roc_auc,
             telemetry.oof_pr_auc,
             telemetry.oof_log_loss,
@@ -209,7 +322,7 @@ class AutonomousExperimentLoop:
         return entry
 
     def execute_full_15_run_loop(self, train_val_df: pd.DataFrame) -> Dict[str, Any]:
-        """Runs the entire 15-iteration supervisor feedback loop from start to finish."""
+        """Runs the entire 15-iteration supervisor tournament & optimization loop from start to finish."""
         logger.info("=================================================================")
         logger.info("LAUNCHING AUTONOMOUS DATA SCIENTIST LOOP (15 Experiment Budget)")
         logger.info("=================================================================")
@@ -217,41 +330,90 @@ class AutonomousExperimentLoop:
         # Step 0: Pre-Flight Profiling (Zero Cost)
         self.run_pre_flight(train_val_df)
 
-        # Baseline Initial Configuration for Experiment 1
-        current_decision = SupervisorDecision(
-            experiment_id=1,
-            hypothesis="Baseline Run 1: Establish benchmark performance with default CatBoost hyperparameters and raw features.",
-            mathematical_justification="Anchor point to measure baseline generalization gap and initial loss trajectory.",
-            hyperparameters=HyperparameterConfig(
-                model_family="catboost",
-                depth=6,
-                learning_rate=0.05,
-                l2_leaf_reg=3.0,
-                iterations=1000,
-            ),
-            feature_config=FeatureEngineeringConfig(
-                enable_charge_ratios=False,
-                enable_tenure_cohorts=False,
-                enable_service_density=False,
-                enable_interaction_terms=False,
-            ),
-            expected_outcome="Establish baseline OOF ROC-AUC (~0.84) and initial validation loss.",
+        tournament_k = min(len(self.tournament_candidates), self.max_runs) if self.tournament_candidates else 0
+        logger.info(
+            "Tournament Configuration: %d candidate model families %s",
+            tournament_k,
+            self.tournament_candidates,
         )
 
         completed_entries = []
+
+        # Determine initial decision
+        if tournament_k > 0:
+            current_decision = get_tournament_baseline_decision(1, self.tournament_candidates[0])
+        else:
+            current_decision = SupervisorDecision(
+                experiment_id=1,
+                hypothesis="Baseline Run 1: Establish benchmark performance with default CatBoost hyperparameters and raw features.",
+                mathematical_justification="Anchor point to measure baseline generalization gap and initial loss trajectory.",
+                hyperparameters=HyperparameterConfig(
+                    model_family="catboost",
+                    depth=6,
+                    learning_rate=0.05,
+                    l2_leaf_reg=3.0,
+                    iterations=1000,
+                ),
+                feature_config=FeatureEngineeringConfig(),
+                expected_outcome="Establish baseline OOF ROC-AUC (~0.84) and initial validation loss.",
+            )
 
         for exp_id in range(1, self.max_runs + 1):
             if self.budget_guard.is_exhausted():
                 logger.warning("Budget limit reached (%d runs). Terminating loop.", self.max_runs)
                 break
 
+            # If in tournament exploration phase, set to corresponding candidate family
+            if tournament_k > 0 and exp_id <= tournament_k:
+                current_decision = get_tournament_baseline_decision(exp_id, self.tournament_candidates[exp_id - 1])
+
             logger.info("-----------------------------------------------------------------")
             logger.info(">>> STARTING EXPERIMENT %d OF %d <<<", exp_id, self.max_runs)
             logger.info("Hypothesis: %s", current_decision.hypothesis)
+            logger.info("Architecture: %s", current_decision.hyperparameters.model_family.upper())
 
             # Execute the single experiment
             run_result = self.run_single_experiment(exp_id, current_decision, train_val_df)
             completed_entries.append(run_result)
+
+            # Check if tournament phase just concluded!
+            if tournament_k > 0 and exp_id == tournament_k:
+                tournament_runs = completed_entries[:tournament_k]
+                self.tournament_leaderboard = sorted(
+                    tournament_runs,
+                    key=lambda r: (r["metrics"]["oof_roc_auc"], r["metrics"]["oof_pr_auc"]),
+                    reverse=True,
+                )
+                winner_run = self.tournament_leaderboard[0]
+                self.winning_family = winner_run["hyperparameters"]["model_family"]
+
+                logger.info("=================================================================")
+                logger.info("TOURNAMENT EXPLORATION COMPLETED ACROSS %d MODEL FAMILIES", tournament_k)
+                logger.info("TOURNAMENT LEADERBOARD:")
+                for rank, tr in enumerate(self.tournament_leaderboard, start=1):
+                    logger.info(
+                        "  #%d: %-20s | ROC-AUC=%.5f | PR-AUC=%.5f | LogLoss=%.4f | Gap=%.4f (Omega=%.2f%%)",
+                        rank,
+                        tr["hyperparameters"]["model_family"].upper(),
+                        tr["metrics"]["oof_roc_auc"],
+                        tr["metrics"]["oof_pr_auc"],
+                        tr["metrics"]["oof_log_loss"],
+                        tr["metrics"]["generalization_gap"],
+                        tr["metrics"]["overfitting_index"],
+                    )
+                logger.info("-----------------------------------------------------------------")
+                logger.info(
+                    "CROWNING TOURNAMENT CHAMPION: '%s' (Run #%d, ROC-AUC=%.5f)",
+                    self.winning_family.upper(),
+                    winner_run["experiment_id"],
+                    winner_run["metrics"]["oof_roc_auc"],
+                )
+                logger.info(
+                    "Locking architecture to '%s' for remaining %d experiments.",
+                    self.winning_family.upper(),
+                    self.max_runs - tournament_k,
+                )
+                logger.info("=================================================================")
 
             # If more experiments remain, pipe telemetry to Math Engine & Gemini Supervisor for next cycle
             if exp_id < self.max_runs:
@@ -282,13 +444,18 @@ class AutonomousExperimentLoop:
                 logger.info("Consulting Gemini Supervisor for Experiment %d config...", exp_id + 1)
                 current_decision = self.llm_client.decide_next_experiment(prompt, experiment_id=exp_id + 1)
 
+                # If tournament winner is locked, enforce winning architecture for all remaining runs!
+                if self.winning_family:
+                    current_decision.hyperparameters.model_family = self.winning_family
+
         best_overall = self.ledger.get_best_run()
         logger.info("=================================================================")
         logger.info("AUTONOMOUS LOOP COMPLETED: 15/15 EXPERIMENTS RECORDED")
         if best_overall:
             logger.info(
-                "Best Experiment: Run #%d | Best OOF ROC-AUC: %.5f | PR-AUC: %.5f",
+                "Best Experiment: Run #%d (%s) | Best OOF ROC-AUC: %.5f | PR-AUC: %.5f",
                 best_overall["experiment_id"],
+                best_overall.get("hyperparameters", {}).get("model_family", "catboost").upper(),
                 best_overall["metrics"]["oof_roc_auc"],
                 best_overall["metrics"]["oof_pr_auc"],
             )
@@ -341,13 +508,18 @@ class AutonomousExperimentLoop:
             "markdown_report": final_report_md,
             "report_path": str(report_md_path),
             "trajectory_summary_path": str(trajectory_summary_path),
+            "tournament_leaderboard": self.tournament_leaderboard,
+            "winning_family": self.winning_family,
         }
         with open(report_json_path, "w", encoding="utf-8") as f:
             json.dump(report_json_payload, f, indent=2)
         logger.info("Saved Supervisor Final JSON Report to %s", report_json_path)
 
         # Persist champion model artifact if live training was executed
-        champion_path = Path("artifacts/champion_model.cbm")
+        champion_joblib_path = Path("artifacts/champion_model.joblib")
+        champion_cbm_path = Path("artifacts/champion_model.cbm")
+        champion_metadata_path = Path("artifacts/champion_metadata.json")
+
         if self.execute_live_training and best_overall:
             try:
                 best_config = HyperparameterConfig(**best_overall["hyperparameters"])
@@ -356,11 +528,29 @@ class AutonomousExperimentLoop:
                 transformed_df = pipeline.transform(train_val_df)
                 X_all = transformed_df.drop(columns=["Churn"], errors="ignore")
                 y_all = transformed_df["Churn"] if "Churn" in transformed_df.columns else pd.Series(np.zeros(len(X_all)))
-                champion = self.model_cls(config=best_config, device=self.device)
+
+                champion = create_model(config=best_config, device=self.device)
                 champion.fit_final(X_all, y_all)
-                champion.save_model(champion_path)
+                champion.save_model(champion_joblib_path)
+
+                # If CatBoost, also save native .cbm for backward compatibility
+                if best_config.model_family == "catboost" and hasattr(champion, "champion_model") and hasattr(champion.champion_model, "save_model"):
+                    champion.champion_model.save_model(str(champion_cbm_path))
+
+                # Save metadata JSON
+                with open(champion_metadata_path, "w", encoding="utf-8") as f:
+                    json.dump({
+                        "model_family": best_config.model_family,
+                        "model_path": str(champion_joblib_path),
+                        "cbm_path": str(champion_cbm_path) if best_config.model_family == "catboost" else None,
+                        "experiment_id": best_overall["experiment_id"],
+                        "oof_roc_auc": best_overall["metrics"]["oof_roc_auc"],
+                        "oof_pr_auc": best_overall["metrics"]["oof_pr_auc"],
+                        "hyperparameters": best_config.model_dump(),
+                    }, f, indent=2)
+
                 self.champion_pipeline_model = champion
-                logger.info("Persisted final champion model to %s", champion_path)
+                logger.info("Persisted final champion model (%s) to %s", best_config.model_family, champion_joblib_path)
             except Exception as e:
                 logger.warning("Could not persist final champion model: %s", e)
 
@@ -372,6 +562,8 @@ class AutonomousExperimentLoop:
             "final_report_path": report_md_path,
             "trajectory_summary_path": trajectory_summary_path,
             "summary_stats": summary_stats,
+            "tournament_leaderboard": self.tournament_leaderboard,
+            "winning_family": self.winning_family,
         }
 
     def evaluate_champion_holdout(
@@ -381,7 +573,6 @@ class AutonomousExperimentLoop:
     ) -> Dict[str, Any]:
         """Evaluates champion model on the sealed holdout set according to Technical Spec."""
         from sklearn.metrics import roc_auc_score, average_precision_score, log_loss
-        import json
 
         best_run = self.ledger.get_best_run()
         if not best_run:
@@ -397,11 +588,26 @@ class AutonomousExperimentLoop:
         X_holdout = transformed_holdout.drop(columns=["Churn"], errors="ignore")
         y_holdout = transformed_holdout["Churn"]
 
-        champion_model_path = Path("artifacts/champion_model.cbm")
-        if self.champion_pipeline_model and self.champion_pipeline_model.champion_model:
+        champion_joblib_path = Path("artifacts/champion_model.joblib")
+        champion_cbm_path = Path("artifacts/champion_model.cbm")
+        champion_metadata_path = Path("artifacts/champion_metadata.json")
+
+        best_family = best_run.get("hyperparameters", {}).get("model_family", "catboost")
+        if champion_metadata_path.exists():
+            try:
+                with open(champion_metadata_path, encoding="utf-8") as f:
+                    meta = json.load(f)
+                    best_family = meta.get("model_family", best_family)
+            except Exception:
+                pass
+
+        if self.champion_pipeline_model and getattr(self.champion_pipeline_model, "champion_model", None):
             holdout_probs = self.champion_pipeline_model.predict_proba(X_holdout)
-        elif champion_model_path.exists():
-            loaded_champion = self.model_cls.load_model(champion_model_path)
+        elif champion_joblib_path.exists():
+            loaded_champion = load_champion_model(champion_joblib_path, model_family=best_family)
+            holdout_probs = loaded_champion.predict_proba(X_holdout)
+        elif champion_cbm_path.exists():
+            loaded_champion = load_champion_model(champion_cbm_path, model_family="catboost")
             holdout_probs = loaded_champion.predict_proba(X_holdout)
         else:
             holdout_probs = np.full(len(y_holdout), 0.5)
@@ -412,6 +618,7 @@ class AutonomousExperimentLoop:
 
         eval_report = {
             "champion_experiment_id": best_run["experiment_id"],
+            "champion_family": best_family,
             "holdout_samples": len(holdout_df),
             "holdout_roc_auc": holdout_auc,
             "holdout_pr_auc": holdout_pr_auc,
@@ -425,8 +632,8 @@ class AutonomousExperimentLoop:
             json.dump(eval_report, f, indent=2)
 
         logger.info(
-            "Holdout Evaluation Complete: ROC-AUC=%.5f | PR-AUC=%.5f | LogLoss=%.4f (Saved: %s)",
-            holdout_auc, holdout_pr_auc, holdout_logloss, output_path
+            "Holdout Evaluation Complete (%s): ROC-AUC=%.5f | PR-AUC=%.5f | LogLoss=%.4f (Saved: %s)",
+            best_family.upper(), holdout_auc, holdout_pr_auc, holdout_logloss, output_path
         )
         return eval_report
 
@@ -450,11 +657,26 @@ class AutonomousExperimentLoop:
         transformed_eval = pipeline.transform(eval_df)
         X_eval = transformed_eval.drop(columns=["Churn"], errors="ignore")
 
-        champion_model_path = Path("artifacts/champion_model.cbm")
-        if self.champion_pipeline_model and self.champion_pipeline_model.champion_model:
+        champion_joblib_path = Path("artifacts/champion_model.joblib")
+        champion_cbm_path = Path("artifacts/champion_model.cbm")
+        champion_metadata_path = Path("artifacts/champion_metadata.json")
+
+        best_family = best_run.get("hyperparameters", {}).get("model_family", "catboost") if best_run else "catboost"
+        if champion_metadata_path.exists():
+            try:
+                with open(champion_metadata_path, encoding="utf-8") as f:
+                    meta = json.load(f)
+                    best_family = meta.get("model_family", best_family)
+            except Exception:
+                pass
+
+        if self.champion_pipeline_model and getattr(self.champion_pipeline_model, "champion_model", None):
             probs = self.champion_pipeline_model.predict_proba(X_eval)
-        elif champion_model_path.exists():
-            loaded_champion = self.model_cls.load_model(champion_model_path)
+        elif champion_joblib_path.exists():
+            loaded_champion = load_champion_model(champion_joblib_path, model_family=best_family)
+            probs = loaded_champion.predict_proba(X_eval)
+        elif champion_cbm_path.exists():
+            loaded_champion = load_champion_model(champion_cbm_path, model_family="catboost")
             probs = loaded_champion.predict_proba(X_eval)
         else:
             probs = np.full(len(X_eval), 0.25)
@@ -474,19 +696,35 @@ class AutonomousExperimentLoop:
 
     def _simulate_telemetry(self, exp_id: int, decision: SupervisorDecision) -> ExperimentTelemetry:
         """Simulates realistic extensive telemetry for loop testing before live model loading."""
-        base_auc = 0.8420
-        auc_progression = [
-            0.8420, 0.8455, 0.8480, 0.8525, 0.8560, 0.8590, 0.8610,
-            0.8625, 0.8640, 0.8652, 0.8660, 0.8668, 0.8675, 0.8680, 0.8685
-        ]
-        auc = auc_progression[exp_id - 1] if exp_id <= len(auc_progression) else base_auc + (exp_id * 0.0018)
+        family = decision.hyperparameters.model_family
+
+        # Baseline performance benchmarks per inductive bias
+        family_baselines = {
+            "catboost": 0.85055,
+            "lightgbm": 0.84910,
+            "xgboost": 0.84650,
+            "random_forest": 0.83850,
+            "logistic_regression": 0.80620,
+        }
+
+        tournament_k = min(len(self.tournament_candidates), self.max_runs) if self.tournament_candidates else 0
+        if tournament_k > 0 and exp_id <= tournament_k:
+            auc = family_baselines.get(family, 0.8420)
+        else:
+            auc_progression = [
+                0.8525, 0.8560, 0.8590, 0.8610, 0.8625,
+                0.8640, 0.8652, 0.8660, 0.8668, 0.8685
+            ]
+            prog_idx = max(0, exp_id - tournament_k - 1)
+            auc = auc_progression[min(prog_idx, len(auc_progression) - 1)]
+
         pr_auc = auc * 0.78
 
         # Loss dynamics
-        train_loss = 0.35 - (exp_id * 0.006)
-        val_loss = 0.39 - (exp_id * 0.004)
+        train_loss = 0.35 - (exp_id * 0.005)
+        val_loss = 0.39 - (exp_id * 0.003)
         gen_gap = val_loss - train_loss
-        overfit_idx = (gen_gap / val_loss) * 100.0
+        overfit_idx = (gen_gap / max(val_loss, 1e-6)) * 100.0
 
         # Iterations
         total_iter = decision.hyperparameters.iterations
@@ -531,7 +769,7 @@ class AutonomousExperimentLoop:
             overfitting_index=float(overfit_idx),
             best_iteration=best_iter,
             total_iterations=total_iter,
-            early_stopping_fraction=best_iter / total_iter,
+            early_stopping_fraction=best_iter / max(total_iter, 1),
             val_loss_gradient_tail=-0.00015 + (exp_id * 0.00002),
             loss_trajectory_samples=sampled_losses,
             feature_importances={f["feature"]: f["importance"] for f in top_feats + bottom_feats},
